@@ -8,6 +8,9 @@ test("builds authoritative DOS context without exposing the Windows host directo
   assert.match(prompt, /Current drive: D:/);
   assert.match(prompt, /Current directory: D:\\WORK/);
   assert.match(prompt, /Client mode: interactive/);
+  assert.match(prompt, /retrofuturist/);
+  assert.match(prompt, /Make the user feel accompanied at the keyboard/);
+  assert.match(prompt, /Never substitute compile_asm after a failed compile_c call/);
   assert.match(prompt, /renders a compact Markdown subset/);
   assert.match(prompt, /fenced code blocks/);
   assert.doesNotMatch(prompt, /Users|Documents|Projects|LIZA\/host/i);

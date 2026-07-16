@@ -133,12 +133,12 @@ async function inBuildDirectory(action: (
 }
 
 function runProcess(executable: string, args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<ProcessResult> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const child = spawn(executable, args, { cwd, env, windowsHide: true });
     const chunks: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => chunks.push(chunk));
-    child.once("error", reject);
+    child.once("error", (error) => resolve({ exitCode: -1, output: error.message }));
     child.once("close", (code) => resolve({ exitCode: code ?? -1, output: Buffer.concat(chunks).toString("utf8").trim() }));
   });
 }
