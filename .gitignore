@@ -5,3 +5,4 @@ dos/*.obj
 dos/*.exe
 dos/*.map
 .cache
+.liza

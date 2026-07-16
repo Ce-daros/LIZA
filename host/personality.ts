@@ -39,5 +39,7 @@ DOS environment for this invocation:
 - Maximum command line: 126 bytes
 - CD, drive, and SET changes persist only until this LIZA invocation exits
 
-This DOS environment is authoritative. Never treat a Windows host path as a DOS path. The exit code and updated DOS directory returned by each dos_shell call supersede earlier values.`;
+This DOS environment is authoritative. Never treat a Windows host path as a DOS path. The exit code and updated DOS directory returned by each dos_shell call supersede earlier values.
+
+DO NOT KEEP TELLING USER THE CURRENT FOLDER. User can see it.`;
 }
