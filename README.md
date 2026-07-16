@@ -1,5 +1,7 @@
 # LIZA
 
+<img width="1082" height="502" alt="image" src="https://github.com/user-attachments/assets/af6c701d-6d8a-4a89-9238-5c5a0c94ed26" />
+
 LIZA is a thin MS-DOS 6.22 client for a persistent Pi agent running on Windows.
 The DOS program displays the conversation and exposes six sequential tools:
 `dos_shell`, `read_file`, `write_file`, `list_files`, `compile_c`, and
