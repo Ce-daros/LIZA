@@ -23,9 +23,10 @@ class FakeAgent implements AgentDriver {
 
   async run(prompt: string, onText: (text: string) => void): Promise<void> {
     this.runs.push(prompt);
+    onText("Let me do it for you.");
     const result = await this.executor!("DIR *.TXT /O:-S");
     assert.match(result.output, /NOTES/);
-    onText("NOTES.TXT is the largest file.\n");
+    onText("Done, the file has saved.\n");
   }
 
   async abort(): Promise<void> { this.aborted = true; }
@@ -41,7 +42,7 @@ async function settle(): Promise<void> {
   await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-test("routes one shell tool call while hiding raw output from assistant display", async () => {
+test("flushes streamed text before displaying a shell tool call", async () => {
   const agent = new FakeAgent();
   const outgoing: Frame[] = [];
   let peer: DosPeer;
@@ -70,8 +71,16 @@ test("routes one shell tool call while hiding raw output from assistant display"
     .filter((frame) => frame.type === MessageType.StyledAssistantChunk)
     .map((frame) => frame.payload.subarray(1).toString("ascii"))
     .join("");
-  assert.equal(visible, "NOTES.TXT is the largest file.\n");
+  assert.equal(visible, "Let me do it for you.Done, the file has saved.\n");
   assert.doesNotMatch(visible, /18432/);
+
+  const firstText = outgoing.findIndex((frame) =>
+    frame.type === MessageType.StyledAssistantChunk && frame.payload.subarray(1).toString("ascii") === "Let me do it for you.");
+  const command = outgoing.findIndex((frame) => frame.type === MessageType.ExecRequest);
+  const lastText = outgoing.findIndex((frame) =>
+    frame.type === MessageType.StyledAssistantChunk && frame.payload.subarray(1).toString("ascii") === "Done, the file has saved.");
+  assert.ok(firstText < command);
+  assert.ok(command < lastText);
 });
 
 test("starts a fresh persistent conversation on request", async () => {

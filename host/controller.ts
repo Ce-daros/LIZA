@@ -17,18 +17,34 @@ export interface AgentDriver {
 export class LizaController {
   private activePeer: DosPeer | undefined;
   private activeSequence: number | undefined;
+  private renderer: MarkdownRenderer | undefined;
   private running = false;
 
   constructor(private readonly agent: AgentDriver) {}
 
   attach(peer: DosPeer): void {
     this.activePeer = peer;
-    this.agent.setShellExecutor((command) => peer.execute(command));
+    this.agent.setShellExecutor((command) => {
+      this.flushAssistantText();
+      return peer.execute(command);
+    });
     this.agent.setFileOperations({
-      read: (path, offset, maxBytes) => peer.readFile(path, offset, maxBytes),
-      write: (path, content, mode) => peer.writeFile(path, content, mode),
-      writeBytes: (path, content, mode) => peer.writeFileBytes(path, content, mode),
-      list: (path, pattern, cursor, limit) => peer.listFiles(path, pattern, cursor, limit),
+      read: (path, offset, maxBytes) => {
+        this.flushAssistantText();
+        return peer.readFile(path, offset, maxBytes);
+      },
+      write: (path, content, mode) => {
+        this.flushAssistantText();
+        return peer.writeFile(path, content, mode);
+      },
+      writeBytes: (path, content, mode) => {
+        this.flushAssistantText();
+        return peer.writeFileBytes(path, content, mode);
+      },
+      list: (path, pattern, cursor, limit) => {
+        this.flushAssistantText();
+        return peer.listFiles(path, pattern, cursor, limit);
+      },
     });
     peer.setHandlers({
       onStart: (mode, cwd) => this.onStart(mode, cwd),
@@ -67,6 +83,7 @@ export class LizaController {
     const renderer = new MarkdownRenderer({
       write: (style, text) => peer.sendStyledAssistant(sequence, style, text),
     });
+    this.renderer = renderer;
     try {
       await this.agent.run(prompt, (text) => renderer.feed(text));
     } catch (error) {
@@ -75,6 +92,7 @@ export class LizaController {
       console.error(`[agent] ${message}`);
     } finally {
       renderer.finish();
+      this.renderer = undefined;
       if (peer.isConnected) peer.sendComplete(sequence);
       this.running = false;
       this.activeSequence = undefined;
@@ -103,5 +121,10 @@ export class LizaController {
     this.activePeer = undefined;
     if (this.running) void this.agent.abort();
     console.log("[dos] client disconnected");
+  }
+
+  private flushAssistantText(): void {
+    if (!this.renderer) throw new Error("Assistant renderer is not active");
+    this.renderer.finish();
   }
 }
