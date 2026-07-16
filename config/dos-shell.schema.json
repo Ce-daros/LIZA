@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://liza.local/schema/dos-shell.json",
+  "title": "LIZA DOS shell request",
+  "type": "object",
+  "properties": {
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 126,
+      "description": "One command line to execute through COMMAND.COM."
+    }
+  },
+  "required": ["command"],
+  "additionalProperties": false
+}

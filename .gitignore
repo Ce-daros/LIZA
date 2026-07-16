@@ -1,0 +1,7 @@
+node_modules/
+dist/
+host*.log
+dos/*.obj
+dos/*.exe
+dos/*.map
+.cache
