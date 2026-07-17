@@ -222,6 +222,27 @@ void terminal_record(const char *text)
                     terminal_color(0x07), 0);
 }
 
+void terminal_backspace(void)
+{
+    int follow = terminal_view_row == terminal_latest_view_row();
+
+    if (terminal_cursor_column != 0) {
+        --terminal_cursor_column;
+    } else if (terminal_cursor_row != 0) {
+        --terminal_cursor_row;
+        terminal_cursor_column = TERMINAL_WIDTH - 1;
+    } else {
+        return;
+    }
+    terminal_text[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = ' ';
+    terminal_colors[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] =
+        terminal_attribute;
+    if (follow) {
+        terminal_view_row = terminal_latest_view_row();
+        terminal_redraw();
+    }
+}
+
 void terminal_handle_key(int key)
 {
     unsigned long oldest;

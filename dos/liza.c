@@ -616,6 +616,37 @@ static int collect_prompt(int argc, char **argv, char *prompt, unsigned size)
     return 1;
 }
 
+static int read_prompt(char *prompt, unsigned size)
+{
+    unsigned length = 0;
+    unsigned char character;
+
+    for (;;) {
+        int key = getch();
+        if (key == 0 || key == 0xe0) {
+            terminal_handle_key(key);
+        } else if (key == '\r') {
+            terminal_write("\n");
+            prompt[length] = '\0';
+            return 1;
+        } else if (key == '\b') {
+            if (length != 0) {
+                --length;
+                terminal_backspace();
+            }
+        } else if (key == 27) {
+            while (length != 0) {
+                --length;
+                terminal_backspace();
+            }
+        } else if (key >= ' ' && key <= '~' && length + 1 < size) {
+            character = (unsigned char)key;
+            prompt[length++] = character;
+            terminal_append(&character, 1, terminal_color(0x07), 1);
+        }
+    }
+}
+
 static int interactive(void)
 {
     char prompt[PROMPT_SIZE];
@@ -630,10 +661,7 @@ static int interactive(void)
         display_styled(0x0a, (const unsigned char *)"[", 1);
         display_styled(0x0a, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
         display_styled(0x0a, (const unsigned char *)"] > ", 4);
-        if (fgets(prompt, sizeof(prompt), stdin) == NULL) return 1;
-        prompt[strcspn(prompt, "\r\n")] = '\0';
-        terminal_record(prompt);
-        terminal_record("\n");
+        if (!read_prompt(prompt, sizeof(prompt))) return 1;
         if (same_text(prompt, "/exit")) return 1;
         if (same_text(prompt, "/new")) {
             sequence = send_new(LIZA_NEW_SESSION, (const unsigned char *)"", 0);
