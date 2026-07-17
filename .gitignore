@@ -6,3 +6,4 @@ dos/*.exe
 dos/*.map
 .cache
 .liza
+.env

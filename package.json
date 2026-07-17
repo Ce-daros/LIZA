@@ -7,9 +7,13 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch host/main.ts",
-    "host": "tsx host/main.ts",
+    "protocol:generate": "node tools/generate_protocol.mjs",
+    "protocol:check": "node tools/generate_protocol.mjs --check",
+    "docs:generate": "node --import tsx tools/generate_docs.ts",
+    "docs:check": "node --import tsx tools/generate_docs.ts --check",
+    "build": "npm run protocol:check && npm run docs:check && tsc -p tsconfig.json",
+    "dev": "node --env-file-if-exists=.env --import tsx --watch host/main.ts",
+    "host": "node --env-file-if-exists=.env --import tsx host/main.ts",
     "test": "node --import tsx --test host/**/*.test.ts",
     "check": "npm run build && npm test",
     "build:dos": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/build_dos.ps1"

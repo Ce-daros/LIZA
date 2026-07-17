@@ -3,9 +3,11 @@
 <img width="1082" height="502" alt="image" src="https://github.com/user-attachments/assets/af6c701d-6d8a-4a89-9238-5c5a0c94ed26" />
 
 LIZA is a thin MS-DOS 6.22 client for a persistent Pi agent running on Windows.
-The DOS program displays the conversation and exposes seven sequential tools:
-`dos_shell`, `read_file`, `write_file`, `list_files`, `run_python`,
-`tavily_search`, and `fetch_url`. File and shell operations occur on the
+<!-- generated:tools:start -->
+The DOS program displays the conversation and exposes 7 sequential tools:
+`dos_shell`, `read_file`, `write_file`, `list_files`, `run_python`, `tavily_search`, `fetch_url`.
+<!-- generated:tools:end -->
+File and shell operations occur on the
 guest. Python runs in a sandboxed process on the Windows host.
 
 ## Requirements
@@ -23,9 +25,13 @@ guest. Python runs in a sandboxed process on the Windows host.
 
 ```powershell
 npm install
+Copy-Item .env.example .env
 npm run check
 npm run host
 ```
+
+Set the required API keys in `.env`; the file is ignored by Git. Existing
+process environment variables take precedence over values loaded from it.
 
 The host listens on `\\.\pipe\liza-dos` by default. The included 86Box 5.4
 configuration uses legacy serial passthrough in client mode:

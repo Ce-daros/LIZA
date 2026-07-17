@@ -22,6 +22,7 @@ belonging to that operation use the same sequence.
 
 ## Messages
 
+<!-- generated:messages:start -->
 | Value | Name | Direction | Payload |
 | ---: | --- | --- | --- |
 | 1 | `HELLO` | DOS to host | client identifier |
@@ -54,6 +55,7 @@ belonging to that operation use the same sequence.
 | 28 | `LIST_FILES_END` | DOS to host | status, next cursor, and EOF flag |
 | 29 | `STYLED_ASSISTANT_CHUNK` | host to DOS | style color byte followed by text |
 | 30 | `TOOL_STATUS` | host to DOS | state byte, ASCII label, NUL, optional detail |
+<!-- generated:messages:end -->
 
 Session mode 1 is one-shot and mode 2 is interactive. A prompt consists of zero
 or more `PROMPT_CHUNK` frames followed by `PROMPT_END`. During the resulting

@@ -100,12 +100,9 @@ if __name__ == "__main__":
     output = root / "dos" / "LIZA-DOS.img"
     files = [
         ("LIZA.EXE", (root / "dos" / "liza.exe").read_bytes()),
-        ("README.TXT", b"LIZA 0.1 FOR MS-DOS 6.22\r\n\r\nStart the Windows host, then run:\r\n  LIZA question   One-shot mode\r\n  LIZA            Interactive mode\r\n\r\nIn interactive mode, use /NEW for a new conversation and /EXIT\r\nto return to DOS. Press Esc while LIZA is working to cancel.\r\n"),
         ("XGREP.COM", (root / "dos" / "tools" / "XGREP.COM").read_bytes()),
         ("SED.EXE", (root / "dos" / "tools" / "SED.EXE").read_bytes()),
         ("TEE.EXE", (root / "dos" / "tools" / "TEE.EXE").read_bytes()),
         ("CWSDPMI.EXE", (root / "dos" / "tools" / "CWSDPMI.EXE").read_bytes()),
-        ("TOOLS.TXT", b"LIZA TOOL DISK\r\n\r\nCopy these files to a directory on PATH, such as C:\\DOS:\r\n  XGREP.COM  Regular-expression text search\r\n  SED.EXE    GNU stream editor\r\n  TEE.EXE    Copy pipe input to a file and the display\r\n  CWSDPMI.EXE Required by SED.EXE\r\n\r\nExamples:\r\n  XGREP -n \"TODO\" *.C\r\n  SED \"s/old/new/g\" INPUT.TXT > OUTPUT.TXT\r\n  DIR | TEE FILES.TXT\r\n\r\nSources: FreeDOS XGREP 1.03a (0BSD), GNU SED 4.2.2a\r\n(GPLv3), FreeDOS TEE 2.0.3a (GPLv2), CWSDPMI 7b (GPLv2).\r\n"),
-        ("PROTO.TXT", (root / "protocol" / "PROTOCOL.md").read_text(encoding="utf-8").encode("ascii", "replace")),
     ]
     make_image(output, files)

@@ -9,8 +9,9 @@
 - [x] Xiaomi MiMo V2.5 Pro OpenAI-compatible provider configuration
 - [x] MiMo function-calling, structured-output, and reasoning-capable model registration
 - [x] OpenRouter DeepSeek V4 Pro provider with runtime effort switching
-- [x] Seven schema-constrained sequential tools: `dos_shell`, `read_file`,
-  `write_file`, `list_files`, `run_python`, `tavily_search`, and `fetch_url`
+<!-- generated:tools:start -->
+- [x] 7 schema-constrained sequential tools: `dos_shell`, `read_file`, `write_file`, `list_files`, `run_python`, `tavily_search`, `fetch_url`
+<!-- generated:tools:end -->
 - [x] Sandboxed host-side `run_python` execution with common scientific
   libraries
 - [x] Host-side timeout for DOS command and file operations
@@ -32,7 +33,7 @@
 ## Verified
 
 - TypeScript strict build
-- 33 automated host/protocol tests
+- Automated host/protocol tests
 - Pi model registry and persistent session initialization without a model request
 - Open Watcom 16-bit DOS compilation
 - 1.44 MB FAT12 image size and `55 AA` boot signature
