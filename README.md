@@ -3,9 +3,9 @@
 <img width="1082" height="502" alt="image" src="https://github.com/user-attachments/assets/af6c701d-6d8a-4a89-9238-5c5a0c94ed26" />
 
 LIZA is a thin MS-DOS 6.22 client for a persistent Pi agent running on Windows.
-The DOS program displays the conversation and exposes six sequential tools:
+The DOS program displays the conversation and exposes eight sequential tools:
 `dos_shell`, `read_file`, `write_file`, `list_files`, `compile_c`, and
-`compile_asm`. File and shell operations occur on the guest. Compilation uses the
+`compile_asm`, plus `tavily_search` and `fetch_url`. File and shell operations occur on the guest. Compilation uses the
 fixed Open Watcom host toolchain and transfers only the resulting DOS executable.
 
 ## Requirements
@@ -15,6 +15,7 @@ fixed Open Watcom host toolchain and transfers only the resulting DOS executable
 - Open Watcom 16-bit DOS compiler at `C:\WATCOM16`
 - MS-DOS 6.22 guest with an emulated COM1 connection
 - `OPENROUTER_API_KEY` in the host environment
+- `TAVILY_API_KEY` in the host environment for web search and URL fetching
 
 ## Host
 
@@ -47,7 +48,8 @@ The host restores the latest Pi conversation from `.liza\sessions`. In
 interactive mode, `/NEW` creates a new persistent conversation. Model routing is
 fixed in `config\models.json` to OpenRouter model `deepseek/deepseek-v4-pro`
 with automatic provider routing and a 384,000-token maximum
-output. The API key is read from `OPENROUTER_API_KEY` and is not stored here.
+output. API keys are read from `OPENROUTER_API_KEY` and `TAVILY_API_KEY` and are not stored here.
+LIZA uses Tavily for its explicit web-search and URL-fetch tools.
 
 ## DOS client
 

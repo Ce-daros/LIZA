@@ -15,6 +15,8 @@ import { buildLizaSystemPrompt, type DosContext } from "./personality.js";
 import { ClientMode } from "./protocol.js";
 import { createFileTools, type FileOperations } from "./file-tools.js";
 import { createCompilerTools } from "./compiler-tools.js";
+import { createTavilySearchTool } from "./tavily-search.js";
+import { createFetchUrlTool } from "./fetch-url.js";
 
 export class PiDriver implements AgentDriver {
   private session: AgentSession | undefined;
@@ -128,6 +130,8 @@ export class PiDriver implements AgentDriver {
       if (!this.fileOperations) throw new Error("DOS client is not connected");
       return this.fileOperations;
     });
+    const tavilySearch = createTavilySearchTool();
+    const fetchUrl = createFetchUrlTool();
 
     const created = await createAgentSession({
       cwd: this.cwd,
@@ -136,8 +140,8 @@ export class PiDriver implements AgentDriver {
       modelRegistry,
       resourceLoader,
       sessionManager,
-      customTools: [dosShell, ...fileTools, ...compilerTools],
-      tools: [...DOS_FACING_TOOLS],
+      customTools: [dosShell, ...fileTools, ...compilerTools, tavilySearch, fetchUrl],
+      tools: [...DOS_FACING_TOOLS, "tavily_search", "fetch_url"],
     });
     this.session = created.session;
     this.unsubscribe = this.session.subscribe((event) => {
