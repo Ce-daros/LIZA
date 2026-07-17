@@ -1,7 +1,6 @@
 # LIZA
 
-![Uploading image.png…]()
-
+<img width="2164" height="1344" alt="image" src="https://github.com/user-attachments/assets/8eed798e-1eef-4332-be59-fb83d64806de" />
 
 LIZA is a thin MS-DOS 6.22 client for a persistent Pi agent running on Windows.
 <!-- generated:tools:start -->
