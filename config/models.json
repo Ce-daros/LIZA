@@ -7,8 +7,8 @@
       "models": [
         {
           "id": "deepseek/deepseek-v4-pro",
-          "name": "DeepSeek V4 Pro (Baidu FP8)",
-          "reasoning": true,
+          "name": "DeepSeek V4 Pro",
+          "reasoning": false,
           "input": ["text"],
           "contextWindow": 1048576,
           "maxTokens": 384000,
@@ -17,9 +17,6 @@
             "output": 0,
             "cacheRead": 0,
             "cacheWrite": 0
-          },
-          "compat": {
-            "supportsReasoningEffort": false
           }
         }
       ]
