@@ -2,8 +2,6 @@ import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import type { ShellResult } from "./dos-peer.js";
 
-export const DOS_FACING_TOOLS = ["dos_shell", "read_file", "write_file", "list_files"] as const;
-
 export interface DosShellResult extends ShellResult {
   cwdBefore: string;
 }

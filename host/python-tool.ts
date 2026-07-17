@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import type { ToolStatusReporter } from "./tool-status.js";
 
 const MAX_OUTPUT_CHARS = 12000;
 
@@ -15,10 +14,7 @@ interface PythonResult {
   timedOut: boolean;
 }
 
-export function createPythonTool(
-  python = process.env.LIZA_PYTHON ?? "python",
-  reportStatus?: ToolStatusReporter,
-) {
+export function createPythonTool(python = process.env.LIZA_PYTHON ?? "python") {
   return defineTool({
     name: "run_python",
     label: "Run Python",
@@ -32,21 +28,15 @@ export function createPythonTool(
     }, { additionalProperties: false }),
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
-      reportStatus?.("start", "PYTHON");
       const workDir = await mkdtemp(path.join(tmpdir(), "liza-py-"));
       try {
         const script = path.join(workDir, "snippet.py");
         await writeFile(script, params.source, "utf8");
         const result = await runPython(python, script, workDir, (params.timeout_seconds ?? 30) * 1000);
-        const failed = result.timedOut || result.exitCode !== 0;
-        reportStatus?.(failed ? "fail" : "ok", "PYTHON");
         return {
           content: [{ type: "text" as const, text: formatResult(result, params.timeout_seconds ?? 30) }],
           details: result,
         };
-      } catch (error) {
-        reportStatus?.("fail", "PYTHON");
-        throw error;
       } finally {
         await rm(workDir, { recursive: true, force: true });
       }

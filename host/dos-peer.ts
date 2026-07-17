@@ -1,42 +1,36 @@
 import { ClientMode, decodeExitCode, encodeFrame, Frame, MessageType, splitPayload, TextStyle } from "./protocol.js";
+import { InboundQueue } from "./inbound-queue.js";
+import { PendingRequests, type PendingRequest } from "./pending-requests.js";
 import type { ToolStatusState } from "./tool-status.js";
 
 export interface PeerHandlers {
   onStart(mode: ClientMode, cwd: string): void | Promise<void>;
-  onPrompt(sequence: number, prompt: string): void;
-  onCancel(sequence: number): void;
-  onNewSession(sequence: number): void;
+  onPrompt(sequence: number, prompt: string): void | Promise<void>;
+  onCancel(sequence: number): void | Promise<void>;
+  onNewSession(sequence: number): void | Promise<void>;
   onDisconnect(): void;
 }
 
-interface PendingExecution {
+interface PendingExecution extends PendingRequest {
   chunks: Buffer[];
   resolve(result: ShellResult): void;
-  reject(error: Error): void;
-  timer: NodeJS.Timeout;
 }
 
-interface PendingRead {
+interface PendingRead extends PendingRequest {
   kind: "read";
   chunks: Buffer[];
   resolve(result: ReadFileResult): void;
-  reject(error: Error): void;
-  timer: NodeJS.Timeout;
 }
 
-interface PendingWrite {
+interface PendingWrite extends PendingRequest {
   kind: "write";
   resolve(result: WriteFileResult): void;
-  reject(error: Error): void;
-  timer: NodeJS.Timeout;
 }
 
-interface PendingList {
+interface PendingList extends PendingRequest {
   kind: "list";
   chunks: Buffer[];
   resolve(result: ListFilesResult): void;
-  reject(error: Error): void;
-  timer: NodeJS.Timeout;
 }
 
 export interface ShellResult {
@@ -65,13 +59,17 @@ export type FrameWriter = (wire: Buffer) => void;
 
 export class DosPeer {
   private readonly promptChunks = new Map<number, Buffer[]>();
-  private readonly executions = new Map<number, PendingExecution>();
-  private readonly fileOperations = new Map<number, PendingRead | PendingWrite | PendingList>();
+  private readonly executions: PendingRequests<PendingExecution>;
+  private readonly fileOperations: PendingRequests<PendingRead | PendingWrite | PendingList>;
+  private readonly inbound = new InboundQueue();
   private handlers: PeerHandlers | undefined;
   private nextSequence = 1;
   private connected = true;
 
-  constructor(private readonly write: FrameWriter, private readonly operationTimeoutMs = 300_000) {}
+  constructor(private readonly write: FrameWriter, operationTimeoutMs = 300_000) {
+    this.executions = new PendingRequests(operationTimeoutMs);
+    this.fileOperations = new PendingRequests(operationTimeoutMs);
+  }
 
   get isConnected(): boolean {
     return this.connected;
@@ -82,13 +80,24 @@ export class DosPeer {
   }
 
   receive(frame: Frame): void {
+    this.inbound.enqueue(
+      () => this.processFrame(frame),
+      (error) => this.failInbound(frame.sequence, error, frame.type !== MessageType.Cancel),
+    );
+  }
+
+  whenInboundIdle(): Promise<void> {
+    return this.inbound.idle();
+  }
+
+  private processFrame(frame: Frame): void | Promise<void> {
+    if (!this.connected) return;
     switch (frame.type) {
       case MessageType.Hello:
         this.sendFrame(MessageType.HelloAck, frame.sequence, Buffer.from("LIZA-HOST/0.1", "ascii"));
         return;
       case MessageType.SessionStart:
-        void this.receiveStart(frame);
-        return;
+        return this.receiveStart(frame);
       case MessageType.PromptChunk:
         this.receivePromptChunk(frame);
         return;
@@ -115,10 +124,10 @@ export class DosPeer {
         this.receiveListEnd(frame);
         return;
       case MessageType.Cancel:
-        this.handlers?.onCancel(frame.sequence);
+        this.launchInbound(frame.sequence, () => this.handlers?.onCancel(frame.sequence), false);
         return;
       case MessageType.NewSession:
-        this.handlers?.onNewSession(frame.sequence);
+        this.launchInbound(frame.sequence, () => this.handlers?.onNewSession(frame.sequence), true);
         return;
       case MessageType.Disconnect:
         this.close();
@@ -139,7 +148,7 @@ export class DosPeer {
     if (payload.length === 0 || payload.length > 126) throw new RangeError("DOS command must contain 1 to 126 bytes");
     const sequence = this.allocateSequence();
     return new Promise<ShellResult>((resolve, reject) => {
-      this.executions.set(sequence, { chunks: [], resolve, reject, timer: this.armTimeout(sequence, "DOS command") });
+      this.executions.add(sequence, "DOS command", { chunks: [], resolve, reject });
       this.sendFrame(MessageType.ExecRequest, sequence, payload);
     });
   }
@@ -154,7 +163,7 @@ export class DosPeer {
     filePath.copy(payload, 6);
     const sequence = this.allocateSequence();
     return new Promise<ReadFileResult>((resolve, reject) => {
-      this.fileOperations.set(sequence, { kind: "read", chunks: [], resolve, reject, timer: this.armTimeout(sequence, "DOS file operation") });
+      this.fileOperations.add(sequence, "DOS file operation", { kind: "read", chunks: [], resolve, reject });
       this.sendFrame(MessageType.ReadFileRequest, sequence, payload);
     });
   }
@@ -172,7 +181,7 @@ export class DosPeer {
     const sequence = this.allocateSequence();
     const start = Buffer.concat([Buffer.from([mode === "overwrite" ? 1 : 2]), filePath]);
     return new Promise<WriteFileResult>((resolve, reject) => {
-      this.fileOperations.set(sequence, { kind: "write", resolve, reject, timer: this.armTimeout(sequence, "DOS file operation") });
+      this.fileOperations.add(sequence, "DOS file operation", { kind: "write", resolve, reject });
       this.sendFrame(MessageType.WriteFileStart, sequence, start);
       for (const chunk of splitPayload(contentBytes, 512)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
       this.sendFrame(MessageType.WriteFileEnd, sequence, Buffer.alloc(0));
@@ -192,7 +201,7 @@ export class DosPeer {
     mask.copy(payload, 4 + directory.length);
     const sequence = this.allocateSequence();
     return new Promise<ListFilesResult>((resolve, reject) => {
-      this.fileOperations.set(sequence, { kind: "list", chunks: [], resolve, reject, timer: this.armTimeout(sequence, "DOS file operation") });
+      this.fileOperations.add(sequence, "DOS file operation", { kind: "list", chunks: [], resolve, reject });
       this.sendFrame(MessageType.ListFilesRequest, sequence, payload);
     });
   }
@@ -237,16 +246,8 @@ export class DosPeer {
   close(): void {
     if (!this.connected) return;
     this.connected = false;
-    for (const pending of this.executions.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("DOS client disconnected during command execution"));
-    }
-    for (const pending of this.fileOperations.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("DOS client disconnected during file operation"));
-    }
-    this.executions.clear();
-    this.fileOperations.clear();
+    this.executions.rejectAll("DOS client disconnected during command execution");
+    this.fileOperations.rejectAll("DOS client disconnected during file operation");
     this.promptChunks.clear();
     this.handlers?.onDisconnect();
   }
@@ -259,7 +260,7 @@ export class DosPeer {
     }
     const started = this.handlers?.onStart(mode, frame.payload.subarray(1).toString("ascii"));
     if (started) await started;
-    this.sendReady(frame.sequence);
+    if (this.connected) this.sendReady(frame.sequence);
   }
 
   private receivePromptChunk(frame: Frame): void {
@@ -271,7 +272,8 @@ export class DosPeer {
   private receivePromptEnd(frame: Frame): void {
     const chunks = this.promptChunks.get(frame.sequence) ?? [];
     this.promptChunks.delete(frame.sequence);
-    this.handlers?.onPrompt(frame.sequence, Buffer.concat(chunks).toString("ascii"));
+    const prompt = Buffer.concat(chunks).toString("ascii");
+    this.launchInbound(frame.sequence, () => this.handlers?.onPrompt(frame.sequence, prompt), true);
   }
 
   private receiveExecChunk(frame: Frame): void {
@@ -284,13 +286,11 @@ export class DosPeer {
   }
 
   private receiveExecEnd(frame: Frame): void {
-    const pending = this.executions.get(frame.sequence);
+    const pending = this.executions.take(frame.sequence);
     if (!pending) {
       this.sendError(frame.sequence, "No matching DOS command");
       return;
     }
-    this.executions.delete(frame.sequence);
-    clearTimeout(pending.timer);
     const cwd = frame.payload.subarray(2).toString("ascii");
     if (cwd.length === 0) {
       pending.reject(new Error("DOS command result did not include a working directory"));
@@ -377,9 +377,7 @@ export class DosPeer {
       this.sendError(sequence, "No matching DOS file operation");
       return undefined;
     }
-    this.fileOperations.delete(sequence);
-    clearTimeout(pending.timer);
-    return pending;
+    return this.fileOperations.take(sequence);
   }
 
   private sendFrame(type: MessageType, sequence: number, payload: Buffer): void {
@@ -387,21 +385,22 @@ export class DosPeer {
     this.write(encodeFrame({ type, sequence, payload }));
   }
 
-  private armTimeout(sequence: number, operation: string): NodeJS.Timeout {
-    const timer = setTimeout(() => {
-      const pending = this.executions.get(sequence) ?? this.fileOperations.get(sequence);
-      this.executions.delete(sequence);
-      this.fileOperations.delete(sequence);
-      pending?.reject(new Error(`${operation} timed out after ${this.operationTimeoutMs} ms without a response from the DOS guest; it may be busy or stuck`));
-    }, this.operationTimeoutMs);
-    timer.unref();
-    return timer;
-  }
-
   private allocateSequence(): number {
     const sequence = this.nextSequence;
     this.nextSequence = this.nextSequence === 0xffff ? 1 : this.nextSequence + 1;
     return sequence;
+  }
+
+  private launchInbound(sequence: number, task: () => void | Promise<void> | undefined, completeOnError: boolean): void {
+    Promise.resolve()
+      .then(task)
+      .catch((error) => this.failInbound(sequence, error, completeOnError));
+  }
+
+  private failInbound(sequence: number, error: unknown, complete: boolean): void {
+    if (!this.connected) return;
+    this.sendError(sequence, error instanceof Error ? error.message : String(error));
+    if (complete) this.sendComplete(sequence);
   }
 }
 

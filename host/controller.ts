@@ -1,30 +1,7 @@
 import { ClientMode } from "./protocol.js";
-import { DosPeer, ShellResult } from "./dos-peer.js";
-import type { DosContext } from "./system-prompt.js";
-import type { FileOperations } from "./file-tools.js";
+import { DosPeer } from "./dos-peer.js";
 import { MarkdownRenderer } from "./markdown-renderer.js";
-import type { ToolStatusReporter } from "./tool-status.js";
-
-export interface AgentDriver {
-  setShellExecutor(executor: (command: string) => Promise<ShellResult>): void;
-  setFileOperations(operations: FileOperations): void;
-  setDosContext(context: DosContext): void;
-  setToolStatusReporter(reporter: ToolStatusReporter): void;
-  getStatus(): AgentStatus;
-  setModel(modelId: string): Promise<AgentStatus>;
-  setEffort(effort: string): AgentStatus;
-  run(prompt: string, onText: (text: string) => void): Promise<void>;
-  abort(): Promise<void>;
-  newSession(): Promise<void>;
-  dispose(): void;
-}
-
-export interface AgentStatus {
-  model: string;
-  effort: string;
-  availableModels: readonly string[];
-  availableEfforts: readonly string[];
-}
+import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
 
 export class LizaController {
   private activePeer: DosPeer | undefined;
@@ -36,37 +13,11 @@ export class LizaController {
 
   attach(peer: DosPeer): void {
     this.activePeer = peer;
-    this.agent.setToolStatusReporter((state, label, detail) => {
-      if (this.activeSequence !== undefined && peer.isConnected)
-        peer.sendToolStatus(this.activeSequence, state, label, detail);
-    });
-    this.agent.setShellExecutor((command) => {
-      this.flushAssistantText();
-      return peer.execute(command);
-    });
-    this.agent.setFileOperations({
-      read: (path, offset, maxBytes) => {
-        this.flushAssistantText();
-        return peer.readFile(path, offset, maxBytes);
-      },
-      write: (path, content, mode) => {
-        this.flushAssistantText();
-        return peer.writeFile(path, content, mode);
-      },
-      writeBytes: (path, content, mode) => {
-        this.flushAssistantText();
-        return peer.writeFileBytes(path, content, mode);
-      },
-      list: (path, pattern, cursor, limit) => {
-        this.flushAssistantText();
-        return peer.listFiles(path, pattern, cursor, limit);
-      },
-    });
     peer.setHandlers({
-      onStart: (mode, cwd) => this.onStart(mode, cwd),
-      onPrompt: (sequence, prompt) => void this.onPrompt(peer, sequence, prompt),
-      onCancel: (sequence) => void this.onCancel(peer, sequence),
-      onNewSession: (sequence) => void this.onNewSession(peer, sequence),
+      onStart: (mode, cwd) => this.onStart(peer, mode, cwd),
+      onPrompt: (sequence, prompt) => this.onPrompt(peer, sequence, prompt),
+      onCancel: (sequence) => this.onCancel(peer, sequence),
+      onNewSession: (sequence) => this.onNewSession(peer, sequence),
       onDisconnect: () => this.onDisconnect(peer),
     });
   }
@@ -75,9 +26,8 @@ export class LizaController {
     this.agent.dispose();
   }
 
-  private async onStart(mode: ClientMode, cwd: string): Promise<void> {
-    this.agent.setDosContext({ mode, cwd });
-    await this.agent.newSession();
+  private async onStart(peer: DosPeer, mode: ClientMode, cwd: string): Promise<void> {
+    await this.agent.connect(this.createSessionPort(peer, { mode, cwd }));
     const label = mode === ClientMode.OneShot ? "one-shot" : "interactive";
     console.log(`[dos] ${label} session at ${cwd}`);
   }
@@ -166,8 +116,41 @@ export class LizaController {
   private onDisconnect(peer: DosPeer): void {
     if (this.activePeer !== peer) return;
     this.activePeer = undefined;
-    if (this.running) void this.agent.abort();
+    this.agent.disconnect();
+    this.running = false;
+    this.activeSequence = undefined;
+    this.renderer = undefined;
     console.log("[dos] client disconnected");
+  }
+
+  private createSessionPort(peer: DosPeer, context: DosSessionPort["context"]): DosSessionPort {
+    return {
+      context,
+      execute: (command) => {
+        this.flushAssistantText();
+        return peer.execute(command);
+      },
+      read: (path, offset, maxBytes) => {
+        this.flushAssistantText();
+        return peer.readFile(path, offset, maxBytes);
+      },
+      write: (path, content, mode) => {
+        this.flushAssistantText();
+        return peer.writeFile(path, content, mode);
+      },
+      writeBytes: (path, content, mode) => {
+        this.flushAssistantText();
+        return peer.writeFileBytes(path, content, mode);
+      },
+      list: (path, pattern, cursor, limit) => {
+        this.flushAssistantText();
+        return peer.listFiles(path, pattern, cursor, limit);
+      },
+      reportToolStatus: (state, label, detail) => {
+        if (this.activeSequence !== undefined && peer.isConnected)
+          peer.sendToolStatus(this.activeSequence, state, label, detail);
+      },
+    };
   }
 
   private flushAssistantText(): void {

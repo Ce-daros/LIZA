@@ -95,5 +95,5 @@ export function createFileTools(operations: FileOperations) {
     },
   });
 
-  return [readFile, writeFile, listFiles];
+  return [readFile, writeFile, listFiles] as const;
 }

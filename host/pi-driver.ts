@@ -8,27 +8,16 @@ import {
   SessionManager,
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentDriver, AgentStatus } from "./controller.js";
-import type { ShellResult } from "./dos-peer.js";
-import { createDosShellTool, DOS_FACING_TOOLS } from "./dos-tool.js";
-import { buildLizaSystemPrompt, type DosContext } from "./system-prompt.js";
-import { ClientMode } from "./protocol.js";
-import { createFileTools, type FileOperations } from "./file-tools.js";
-import { createPythonTool } from "./python-tool.js";
-import { createTavilySearchTool } from "./tavily-search.js";
-import { createFetchUrlTool } from "./fetch-url.js";
-import type { ToolStatusReporter } from "./tool-status.js";
+import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
+import { buildLizaSystemPrompt } from "./system-prompt.js";
+import { createLizaToolRegistry } from "./tool-registry.js";
 
 export class PiDriver implements AgentDriver {
   private session: AgentSession | undefined;
   private modelRegistry: ModelRegistry | undefined;
   private unsubscribe: (() => void) | undefined;
   private textSink: ((text: string) => void) | undefined;
-  private shellExecutor: ((command: string) => Promise<ShellResult>) | undefined;
-  private dosContext: DosContext = { mode: ClientMode.OneShot, cwd: "C:\\" };
-  private fileOperations: FileOperations | undefined;
-  private toolStatusReporter: ToolStatusReporter | undefined;
-  private readonly toolNames = [...DOS_FACING_TOOLS, "run_python", "tavily_search", "fetch_url"];
+  private port: DosSessionPort | undefined;
 
   private constructor(
     private readonly cwd: string,
@@ -41,20 +30,15 @@ export class PiDriver implements AgentDriver {
     return driver;
   }
 
-  setShellExecutor(executor: (command: string) => Promise<ShellResult>): void {
-    this.shellExecutor = executor;
+  async connect(port: DosSessionPort): Promise<void> {
+    this.closeSession();
+    this.port = port;
+    await this.open(SessionManager.create(this.cwd, this.sessionDir));
   }
 
-  setDosContext(context: DosContext): void {
-    this.dosContext = context;
-  }
-
-  setFileOperations(operations: FileOperations): void {
-    this.fileOperations = operations;
-  }
-
-  setToolStatusReporter(reporter: ToolStatusReporter): void {
-    this.toolStatusReporter = reporter;
+  disconnect(): void {
+    this.closeSession();
+    this.port = undefined;
   }
 
   getStatus(): AgentStatus {
@@ -100,6 +84,7 @@ export class PiDriver implements AgentDriver {
   }
 
   async newSession(): Promise<void> {
+    this.requirePort();
     this.closeSession();
     await this.open(SessionManager.create(this.cwd, this.sessionDir));
   }
@@ -116,6 +101,7 @@ export class PiDriver implements AgentDriver {
     const model = modelRegistry.find("mimo", "mimo-v2.5-pro");
     if (!model) throw new Error("MiMo model mimo-v2.5-pro is not configured");
     this.modelRegistry = modelRegistry;
+    const toolRegistry = createLizaToolRegistry(this.requirePort());
 
     const resourceLoader = new DefaultResourceLoader({
       cwd: this.cwd,
@@ -125,49 +111,16 @@ export class PiDriver implements AgentDriver {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPromptOverride: () => buildLizaSystemPrompt(this.dosContext, this.toolNames),
+      systemPromptOverride: () => buildLizaSystemPrompt(this.requirePort().context, toolRegistry.promptEntries),
       appendSystemPromptOverride: () => [],
       extensionFactories: [{
         name: "liza-dos-context",
         factory: (pi) => {
-          pi.on("before_agent_start", () => ({ systemPrompt: buildLizaSystemPrompt(this.dosContext, this.toolNames) }));
+          pi.on("before_agent_start", () => ({ systemPrompt: buildLizaSystemPrompt(this.requirePort().context, toolRegistry.promptEntries) }));
         },
       }],
     });
     await resourceLoader.reload();
-
-    const dosShell = createDosShellTool((command) => {
-      if (!this.shellExecutor) throw new Error("DOS client is not connected");
-      const cwdBefore = this.dosContext.cwd;
-      return this.shellExecutor(command).then((result) => {
-        this.dosContext = { ...this.dosContext, cwd: result.cwd };
-        return { ...result, cwdBefore };
-      });
-    });
-    const fileTools = createFileTools({
-      read: (path, offset, maxBytes) => {
-        if (!this.fileOperations) throw new Error("DOS client is not connected");
-        return this.fileOperations.read(path, offset, maxBytes);
-      },
-      write: (path, content, mode) => {
-        if (!this.fileOperations) throw new Error("DOS client is not connected");
-        return this.fileOperations.write(path, content, mode);
-      },
-      writeBytes: (path, content, mode) => {
-        if (!this.fileOperations) throw new Error("DOS client is not connected");
-        return this.fileOperations.writeBytes(path, content, mode);
-      },
-      list: (path, pattern, cursor, limit) => {
-        if (!this.fileOperations) throw new Error("DOS client is not connected");
-        return this.fileOperations.list(path, pattern, cursor, limit);
-      },
-    });
-    const reportToolStatus: ToolStatusReporter = (state, label, detail) => {
-      this.toolStatusReporter?.(state, label, detail);
-    };
-    const runPython = createPythonTool(undefined, reportToolStatus);
-    const tavilySearch = createTavilySearchTool(reportToolStatus);
-    const fetchUrl = createFetchUrlTool(reportToolStatus);
 
     const created = await createAgentSession({
       cwd: this.cwd,
@@ -176,13 +129,22 @@ export class PiDriver implements AgentDriver {
       modelRegistry,
       resourceLoader,
       sessionManager,
-      customTools: [dosShell, ...fileTools, runPython, tavilySearch, fetchUrl],
-      tools: this.toolNames,
+      customTools: toolRegistry.tools,
+      tools: toolRegistry.names,
     });
     this.session = created.session;
     this.unsubscribe = this.session.subscribe((event) => {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         this.textSink?.(event.assistantMessageEvent.delta);
+      } else if (event.type === "tool_execution_start") {
+        const status = toolRegistry.status(event.toolName, event.args);
+        if (status) this.requirePort().reportToolStatus("start", status.label, status.detail);
+      } else if (event.type === "tool_execution_end") {
+        const status = toolRegistry.status(event.toolName);
+        if (status) {
+          const state = toolRegistry.failed(event.toolName, event.result, event.isError) ? "fail" : "ok";
+          this.requirePort().reportToolStatus(state, status.label);
+        }
       }
     });
     console.log(`[pi] session ${this.session.sessionId}`);
@@ -200,6 +162,11 @@ export class PiDriver implements AgentDriver {
   private requireSession(): AgentSession {
     if (!this.session) throw new Error("Pi session is not initialized");
     return this.session;
+  }
+
+  private requirePort(): DosSessionPort {
+    if (!this.port) throw new Error("DOS client is not connected");
+    return this.port;
   }
 }
 

@@ -1,6 +1,5 @@
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import type { ToolStatusReporter } from "./tool-status.js";
 
 interface TavilyResult {
   title: string;
@@ -13,7 +12,7 @@ interface TavilySearchResponse {
   results: TavilyResult[];
 }
 
-export function createTavilySearchTool(reportStatus?: ToolStatusReporter) {
+export function createTavilySearchTool() {
   return defineTool({
     name: "tavily_search",
     label: "Search the web",
@@ -24,8 +23,6 @@ export function createTavilySearchTool(reportStatus?: ToolStatusReporter) {
     }, { additionalProperties: false }),
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
-      reportStatus?.("start", "SEARCH");
-      try {
       const apiKey = process.env.TAVILY_API_KEY;
       if (!apiKey) throw new Error("TAVILY_API_KEY is not configured");
 
@@ -49,15 +46,10 @@ export function createTavilySearchTool(reportStatus?: ToolStatusReporter) {
         "Sources:",
         ...payload.results.map((result) => `- ${result.title}\n  ${result.url}\n  ${result.content}`),
       ];
-      reportStatus?.("ok", "SEARCH");
       return {
         content: [{ type: "text" as const, text: sections.join("\n") }],
         details: payload,
       };
-      } catch (error) {
-        reportStatus?.("fail", "SEARCH");
-        throw error;
-      }
     },
   });
 }

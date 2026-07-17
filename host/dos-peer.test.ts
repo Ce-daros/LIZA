@@ -9,7 +9,7 @@ function decodeWire(wire: Buffer): Frame {
   return frames[0]!;
 }
 
-test("handshakes, starts a session, and assembles a chunked prompt", () => {
+test("handshakes, starts a session, and assembles a chunked prompt", async () => {
   const sent: Frame[] = [];
   const peer = new DosPeer((wire) => sent.push(decodeWire(wire)));
   let start: [ClientMode, string] | undefined;
@@ -28,6 +28,8 @@ test("handshakes, starts a session, and assembles a chunked prompt", () => {
   peer.receive({ type: MessageType.PromptChunk, sequence: 6, payload: Buffer.from("largest ") });
   peer.receive({ type: MessageType.PromptChunk, sequence: 6, payload: Buffer.from("file") });
   peer.receive({ type: MessageType.PromptEnd, sequence: 6, payload: Buffer.alloc(0) });
+  await peer.whenInboundIdle();
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.deepEqual(start, [ClientMode.OneShot, "C:\\DOS"]);
   assert.deepEqual(prompt, [6, "largest file"]);
@@ -64,7 +66,7 @@ test("rejects an active command when DOS disconnects", async () => {
   await assert.rejects(pending, /disconnected during command execution/);
 });
 
-test("chunks long assistant output and routes cancellation", () => {
+test("chunks long assistant output and routes cancellation", async () => {
   const sent: Frame[] = [];
   const peer = new DosPeer((wire) => sent.push(decodeWire(wire)));
   let cancelled = 0;
@@ -78,10 +80,44 @@ test("chunks long assistant output and routes cancellation", () => {
   const text = `${"A".repeat(2300)} LIZA\u2019s`;
   peer.sendAssistant(71, text);
   peer.receive({ type: MessageType.Cancel, sequence: 71, payload: Buffer.alloc(0) });
+  await peer.whenInboundIdle();
+  await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.equal(cancelled, 71);
   assert.deepEqual(sent.map((frame) => frame.payload.length), [1024, 1024, 259]);
   assert.equal(Buffer.concat(sent.map((frame) => frame.payload)).toString("ascii"), `${"A".repeat(2300)} LIZA's`);
+});
+
+test("serializes session startup before dispatching prompts", async () => {
+  const peer = new DosPeer(() => {});
+  const events: string[] = [];
+  let finishStart!: () => void;
+  const startGate = new Promise<void>((resolve) => { finishStart = resolve; });
+  peer.setHandlers({
+    onStart: async () => {
+      events.push("start");
+      await startGate;
+      events.push("ready");
+    },
+    onPrompt: () => { events.push("prompt"); },
+    onCancel: () => {},
+    onNewSession: () => {},
+    onDisconnect: () => {},
+  });
+
+  peer.receive({
+    type: MessageType.SessionStart,
+    sequence: 10,
+    payload: Buffer.concat([Buffer.from([ClientMode.Interactive]), Buffer.from("C:\\")]),
+  });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 11, payload: Buffer.alloc(0) });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ["start"]);
+
+  finishStart();
+  await peer.whenInboundIdle();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(events, ["start", "ready", "prompt"]);
 });
 
 test("transliterates supported punctuation and drops unsupported characters for DOS", () => {

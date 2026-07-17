@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AgentDriver, AgentStatus, LizaController } from "./controller.js";
-import { DosPeer, ShellResult } from "./dos-peer.js";
+import { LizaController } from "./controller.js";
+import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
+import { DosPeer } from "./dos-peer.js";
 import { encodeExitCode, Frame, FrameDecoder, MessageType } from "./protocol.js";
-import type { DosContext } from "./system-prompt.js";
-import type { FileOperations } from "./file-tools.js";
 
 class FakeAgent implements AgentDriver {
-  executor: ((command: string) => Promise<ShellResult>) | undefined;
+  port: DosSessionPort | undefined;
   runs: string[] = [];
   aborted = false;
   sessions = 1;
-  context: DosContext | undefined;
-  fileOperations: FileOperations | undefined;
   status: AgentStatus = {
     model: "mimo",
     effort: "high",
@@ -20,13 +17,11 @@ class FakeAgent implements AgentDriver {
     availableEfforts: ["off", "high"],
   };
 
-  setShellExecutor(executor: (command: string) => Promise<ShellResult>): void {
-    this.executor = executor;
+  async connect(port: DosSessionPort): Promise<void> {
+    this.port = port;
+    this.sessions += 1;
   }
-
-  setDosContext(context: DosContext): void { this.context = context; }
-  setToolStatusReporter(): void {}
-  setFileOperations(operations: FileOperations): void { this.fileOperations = operations; }
+  disconnect(): void { this.port = undefined; }
   getStatus(): AgentStatus { return this.status; }
   async setModel(modelId: string): Promise<AgentStatus> {
     if (!this.status.availableModels.includes(modelId)) throw new RangeError(`Unknown model: ${modelId}`);
@@ -42,7 +37,7 @@ class FakeAgent implements AgentDriver {
   async run(prompt: string, onText: (text: string) => void): Promise<void> {
     this.runs.push(prompt);
     onText("before");
-    const result = await this.executor!("DIR *.TXT /O:-S");
+    const result = await this.port!.execute("DIR *.TXT /O:-S");
     assert.match(result.output, /NOTES/);
     onText("after\n");
   }
@@ -77,6 +72,13 @@ test("flushes streamed text before displaying a shell tool call", async () => {
     }
   });
   new LizaController(agent).attach(peer);
+
+  peer.receive({
+    type: MessageType.SessionStart,
+    sequence: 39,
+    payload: Buffer.concat([Buffer.from([1]), Buffer.from("C:\\")]),
+  });
+  await peer.whenInboundIdle();
 
   peer.receive({ type: MessageType.PromptChunk, sequence: 40, payload: Buffer.from("find the largest text file") });
   peer.receive({ type: MessageType.PromptEnd, sequence: 40, payload: Buffer.alloc(0) });
@@ -126,7 +128,7 @@ test("starts a new Pi session for each DOS launch", async () => {
   await settle();
 
   assert.equal(agent.sessions, 2);
-  assert.deepEqual(agent.context, { mode: 1, cwd: "C:\\WORK" });
+  assert.deepEqual(agent.port?.context, { mode: 1, cwd: "C:\\WORK" });
   assert.deepEqual(outgoing.map((frame) => [frame.type, frame.sequence]), [
     [MessageType.SessionReady, 31],
   ]);
