@@ -1,0 +1,296 @@
+#include <conio.h>
+#include <dos.h>
+#include <i86.h>
+#include <string.h>
+#include "terminal.h"
+
+#define DISPLAY_HEIGHT 25
+#define HISTORY_ROWS 150
+
+static int last_output = '\n';
+static unsigned char terminal_attribute;
+static unsigned char terminal_original_attribute;
+static int terminal_attribute_known;
+static unsigned char terminal_text[HISTORY_ROWS][TERMINAL_WIDTH];
+static unsigned char terminal_colors[HISTORY_ROWS][TERMINAL_WIDTH];
+static unsigned long terminal_cursor_row;
+static unsigned char terminal_cursor_column;
+static unsigned long terminal_view_row;
+static int terminal_status_active;
+static unsigned long terminal_status_row;
+static unsigned char terminal_status_column;
+static unsigned char terminal_status_prefix_width;
+static unsigned char terminal_status_spinner;
+static unsigned long terminal_status_tick;
+
+static unsigned long bios_ticks(void)
+{
+    union REGS input;
+    union REGS output;
+
+    input.h.ah = 0x00;
+    int86(0x1a, &input, &output);
+    return ((unsigned long)output.x.cx << 16) | output.x.dx;
+}
+
+static void terminal_set_cursor(unsigned char row, unsigned char column)
+{
+    union REGS input;
+    union REGS output;
+    input.h.ah = 0x02;
+    input.h.bh = 0;
+    input.h.dh = row;
+    input.h.dl = column;
+    int86(0x10, &input, &output);
+}
+
+static unsigned long terminal_oldest_row(void)
+{
+    if (terminal_cursor_row + 1 > HISTORY_ROWS)
+        return terminal_cursor_row + 1 - HISTORY_ROWS;
+    return 0;
+}
+
+static unsigned long terminal_latest_view_row(void)
+{
+    if (terminal_cursor_row >= DISPLAY_HEIGHT)
+        return terminal_cursor_row - (DISPLAY_HEIGHT - 1);
+    return 0;
+}
+
+static void terminal_clear_row(unsigned long row)
+{
+    unsigned index = (unsigned)(row % HISTORY_ROWS);
+    memset(terminal_text[index], ' ', TERMINAL_WIDTH);
+    memset(terminal_colors[index], terminal_attribute, TERMINAL_WIDTH);
+}
+
+static void terminal_redraw(void)
+{
+    volatile unsigned short __far *video;
+    unsigned long oldest = terminal_oldest_row();
+    unsigned long source_row;
+    unsigned short row;
+    unsigned short column;
+    unsigned index;
+    unsigned char character;
+    unsigned char color;
+
+    video = (volatile unsigned short __far *)MK_FP(0xb800, 0);
+    for (row = 0; row < DISPLAY_HEIGHT; ++row) {
+        source_row = terminal_view_row + row;
+        for (column = 0; column < TERMINAL_WIDTH; ++column) {
+            if (source_row >= oldest && source_row <= terminal_cursor_row) {
+                index = (unsigned)(source_row % HISTORY_ROWS);
+                character = terminal_text[index][column];
+                color = terminal_colors[index][column];
+            } else {
+                character = ' ';
+                color = terminal_attribute;
+            }
+            video[row * TERMINAL_WIDTH + column] =
+                ((unsigned short)color << 8) | character;
+        }
+    }
+    if (terminal_view_row == terminal_latest_view_row())
+        terminal_set_cursor((unsigned char)(terminal_cursor_row - terminal_view_row),
+                            terminal_cursor_column);
+    else
+        terminal_set_cursor(DISPLAY_HEIGHT - 1, 0);
+}
+
+static void terminal_advance_line(void)
+{
+    ++terminal_cursor_row;
+    terminal_cursor_column = 0;
+    terminal_clear_row(terminal_cursor_row);
+}
+
+static void terminal_put(unsigned char character, unsigned char color)
+{
+    unsigned spaces;
+
+    if (character == '\r') {
+        terminal_cursor_column = 0;
+    } else if (character == '\n') {
+        terminal_advance_line();
+    } else if (character == '\t') {
+        spaces = 8 - (terminal_cursor_column & 7);
+        while (spaces-- != 0) terminal_put(' ', color);
+    } else {
+        terminal_text[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = character;
+        terminal_colors[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = color;
+        ++terminal_cursor_column;
+        if (terminal_cursor_column == TERMINAL_WIDTH) terminal_advance_line();
+    }
+    last_output = character;
+}
+
+void terminal_append(const unsigned char *text, unsigned short length,
+                     unsigned char color, int redraw)
+{
+    unsigned short i;
+    int follow = terminal_view_row == terminal_latest_view_row();
+    int refresh = follow;
+
+    for (i = 0; i < length; ++i) terminal_put(text[i], color);
+    if (follow) terminal_view_row = terminal_latest_view_row();
+    if (terminal_view_row < terminal_oldest_row()) {
+        terminal_view_row = terminal_oldest_row();
+        refresh = 1;
+    }
+    if (redraw && refresh) terminal_redraw();
+}
+
+void terminal_write(const char *text)
+{
+    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
+                    terminal_color(0x07), 1);
+}
+
+static void terminal_status_replace(unsigned char offset, unsigned char character,
+                                    unsigned char color)
+{
+    unsigned index = (unsigned)(terminal_status_row % HISTORY_ROWS);
+    terminal_text[index][terminal_status_column + offset] = character;
+    terminal_colors[index][terminal_status_column + offset] = color;
+}
+
+void terminal_status_start(const char *label, const char *detail)
+{
+    char text[TERMINAL_WIDTH + 1];
+    unsigned room;
+    unsigned length;
+
+    if (terminal_status_active) return;
+    if (last_output != '\n') terminal_write("\n");
+    terminal_status_row = terminal_cursor_row;
+    terminal_status_column = terminal_cursor_column;
+    strcpy(text, "[");
+    strcat(text, label);
+    strcat(text, "] ");
+    terminal_status_prefix_width = strlen(text);
+    room = TERMINAL_WIDTH - terminal_status_prefix_width - 3;
+    length = strlen(detail);
+    if (length > room) length = room;
+    strncat(text, detail, length);
+    strcat(text, " |");
+    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
+                    terminal_color(0x0e), 1);
+    terminal_status_spinner = 0;
+    terminal_status_tick = bios_ticks();
+    terminal_status_active = 1;
+}
+
+void terminal_status_finish(int success)
+{
+    const char *prefix = success ? "[OK]" : "[FAIL]";
+    unsigned char color = success ? 0x0a : 0x0c;
+    unsigned i;
+
+    if (!terminal_status_active) return;
+    for (i = 0; i < terminal_status_prefix_width; ++i)
+        terminal_status_replace(i, i < strlen(prefix) ? prefix[i] : ' ',
+                                terminal_color(color));
+    terminal_status_replace(terminal_cursor_column - terminal_status_column - 1,
+                            ' ', terminal_color(color));
+    terminal_status_active = 0;
+    terminal_redraw();
+    terminal_write("\n");
+}
+
+void terminal_status_update(void)
+{
+    static const char spinner[] = "|/-\\";
+    unsigned long ticks;
+    unsigned char offset;
+
+    if (!terminal_status_active) return;
+    ticks = bios_ticks();
+    if (ticks - terminal_status_tick < 3) return;
+    terminal_status_tick = ticks;
+    terminal_status_spinner = (terminal_status_spinner + 1) & 3;
+    offset = terminal_cursor_column - terminal_status_column - 1;
+    terminal_status_replace(offset, spinner[terminal_status_spinner],
+                            terminal_color(0x0e));
+    if (terminal_view_row == terminal_latest_view_row()) terminal_redraw();
+}
+
+void terminal_record(const char *text)
+{
+    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
+                    terminal_color(0x07), 0);
+}
+
+void terminal_handle_key(int key)
+{
+    unsigned long oldest;
+    unsigned long latest;
+    int scan;
+
+    if (key != 0 && key != 0xe0) return;
+    scan = getch();
+    oldest = terminal_oldest_row();
+    latest = terminal_latest_view_row();
+    if (scan == 0x48) {
+        if (terminal_view_row > oldest) --terminal_view_row;
+    } else if (scan == 0x50) {
+        if (terminal_view_row < latest) ++terminal_view_row;
+    } else if (scan == 0x49) {
+        if (terminal_view_row > oldest + 20) terminal_view_row -= 20;
+        else terminal_view_row = oldest;
+    } else if (scan == 0x51) {
+        if (terminal_view_row + 20 < latest) terminal_view_row += 20;
+        else terminal_view_row = latest;
+    } else if (scan == 0x47) {
+        terminal_view_row = oldest;
+    } else if (scan == 0x4f) {
+        terminal_view_row = latest;
+    } else {
+        return;
+    }
+    terminal_redraw();
+}
+
+void terminal_reset(void)
+{
+    unsigned row;
+    terminal_color(0x07);
+    for (row = 0; row < HISTORY_ROWS; ++row) terminal_clear_row(row);
+    terminal_cursor_row = 0;
+    terminal_cursor_column = 0;
+    terminal_view_row = 0;
+    terminal_status_active = 0;
+}
+
+void terminal_apply_default_theme(void)
+{
+    terminal_color(0x07);
+    terminal_attribute = 0x07;
+}
+
+void terminal_restore_theme(void)
+{
+    terminal_attribute = terminal_original_attribute;
+}
+
+unsigned char terminal_color(unsigned char foreground)
+{
+    union REGS input;
+    union REGS output;
+
+    if (!terminal_attribute_known) {
+        input.h.ah = 0x08;
+        input.h.bh = 0;
+        int86(0x10, &input, &output);
+        terminal_original_attribute = output.h.ah;
+        terminal_attribute = output.h.ah;
+        terminal_attribute_known = 1;
+    }
+    return (terminal_attribute & 0xf0) | (foreground & 0x0f);
+}
+
+int terminal_at_line_start(void)
+{
+    return last_output == '\n';
+}

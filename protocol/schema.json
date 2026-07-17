@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "sync": [76, 90],
+  "maxPayload": 1024,
+  "headerSize": 8,
+  "modes": [
+    { "name": "ONE_SHOT", "value": 1 },
+    { "name": "INTERACTIVE", "value": 2 }
+  ],
+  "messages": [
+    { "name": "HELLO", "value": 1, "direction": "DOS to host", "payload": "client identifier" },
+    { "name": "HELLO_ACK", "value": 2, "direction": "host to DOS", "payload": "server identifier; same sequence" },
+    { "name": "TEXT", "value": 3, "direction": "either", "payload": "reserved Phase 1 diagnostic" },
+    { "name": "ERROR", "value": 4, "direction": "either", "payload": "compact error text" },
+    { "name": "DISCONNECT", "value": 5, "direction": "either", "payload": "empty" },
+    { "name": "SESSION_START", "value": 6, "direction": "DOS to host", "payload": "mode byte followed by current directory" },
+    { "name": "PROMPT_CHUNK", "value": 7, "direction": "DOS to host", "payload": "prompt bytes" },
+    { "name": "PROMPT_END", "value": 8, "direction": "DOS to host", "payload": "empty" },
+    { "name": "ASSISTANT_CHUNK", "value": 9, "direction": "host to DOS", "payload": "streamed answer bytes" },
+    { "name": "EXEC_REQUEST", "value": 10, "direction": "host to DOS", "payload": "one DOS command, maximum 126 bytes" },
+    { "name": "EXEC_RESULT_CHUNK", "value": 11, "direction": "DOS to host", "payload": "captured stdout/stderr bytes" },
+    { "name": "EXEC_RESULT_END", "value": 12, "direction": "DOS to host", "payload": "signed 16-bit exit code followed by current DOS directory" },
+    { "name": "COMPLETE", "value": 13, "direction": "host to DOS", "payload": "empty" },
+    { "name": "CANCEL", "value": 14, "direction": "DOS to host", "payload": "empty; prompt sequence" },
+    { "name": "NEW_SESSION", "value": 15, "direction": "DOS to host", "payload": "empty" },
+    { "name": "SESSION_READY", "value": 16, "direction": "host to DOS", "payload": "empty; session-start sequence" },
+    { "name": "PING", "value": 17, "direction": "DOS to host", "payload": "empty; sequence zero" },
+    { "name": "PONG", "value": 18, "direction": "host to DOS", "payload": "empty; same sequence" },
+    { "name": "READ_FILE_REQUEST", "value": 19, "direction": "host to DOS", "payload": "offset, maximum byte count, and DOS path" },
+    { "name": "READ_FILE_CHUNK", "value": 20, "direction": "DOS to host", "payload": "file content bytes" },
+    { "name": "READ_FILE_END", "value": 21, "direction": "DOS to host", "payload": "status, next offset, and EOF flag" },
+    { "name": "WRITE_FILE_START", "value": 22, "direction": "host to DOS", "payload": "overwrite/append mode and DOS path" },
+    { "name": "WRITE_FILE_CHUNK", "value": 23, "direction": "host to DOS", "payload": "file content bytes" },
+    { "name": "WRITE_FILE_END", "value": 24, "direction": "host to DOS", "payload": "empty" },
+    { "name": "WRITE_FILE_RESULT", "value": 25, "direction": "DOS to host", "payload": "status and bytes written" },
+    { "name": "LIST_FILES_REQUEST", "value": 26, "direction": "host to DOS", "payload": "cursor, limit, directory, and 8.3 pattern" },
+    { "name": "LIST_FILES_CHUNK", "value": 27, "direction": "DOS to host", "payload": "tab-separated directory entries" },
+    { "name": "LIST_FILES_END", "value": 28, "direction": "DOS to host", "payload": "status, next cursor, and EOF flag" },
+    { "name": "STYLED_ASSISTANT_CHUNK", "value": 29, "direction": "host to DOS", "payload": "style color byte followed by text" },
+    { "name": "TOOL_STATUS", "value": 30, "direction": "host to DOS", "payload": "state byte, ASCII label, NUL, optional detail" }
+  ]
+}

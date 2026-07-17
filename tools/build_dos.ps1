@@ -8,6 +8,9 @@ $env:WATCOM = $Watcom
 $env:INCLUDE = Join-Path $Watcom "h"
 $env:PATH = "$(Join-Path $Watcom 'binnt64');$(Join-Path $Watcom 'binnt');$env:PATH"
 
+& node (Join-Path $root "tools\generate_protocol.mjs") --check
+if ($LASTEXITCODE -ne 0) { throw "Generated protocol files are stale" }
+
 Push-Location (Join-Path $root "dos")
 try {
     & wmake

@@ -1,40 +1,7 @@
-export const SYNC = Buffer.from([0x4c, 0x5a]);
-export const VERSION = 1;
-export const MAX_PAYLOAD = 1024;
-export const HEADER_SIZE = 8;
+import { HEADER_SIZE, MAX_PAYLOAD, MessageType, SYNC_BYTES, VERSION } from "./protocol.generated.js";
+export { ClientMode, HEADER_SIZE, MAX_PAYLOAD, MessageType, VERSION } from "./protocol.generated.js";
 
-export enum MessageType {
-  Hello = 1,
-  HelloAck = 2,
-  Text = 3,
-  Error = 4,
-  Disconnect = 5,
-  SessionStart = 6,
-  PromptChunk = 7,
-  PromptEnd = 8,
-  AssistantChunk = 9,
-  ExecRequest = 10,
-  ExecResultChunk = 11,
-  ExecResultEnd = 12,
-  Complete = 13,
-  Cancel = 14,
-  NewSession = 15,
-  SessionReady = 16,
-  Ping = 17,
-  Pong = 18,
-  ReadFileRequest = 19,
-  ReadFileChunk = 20,
-  ReadFileEnd = 21,
-  WriteFileStart = 22,
-  WriteFileChunk = 23,
-  WriteFileEnd = 24,
-  WriteFileResult = 25,
-  ListFilesRequest = 26,
-  ListFilesChunk = 27,
-  ListFilesEnd = 28,
-  StyledAssistantChunk = 29,
-  ToolStatus = 30,
-}
+export const SYNC = Buffer.from(SYNC_BYTES);
 
 export enum TextStyle {
   Normal = 0x07,
@@ -50,11 +17,6 @@ export interface Frame {
   type: MessageType;
   sequence: number;
   payload: Buffer;
-}
-
-export enum ClientMode {
-  OneShot = 1,
-  Interactive = 2,
 }
 
 export function splitPayload(payload: Uint8Array, maximum = MAX_PAYLOAD): Buffer[] {
