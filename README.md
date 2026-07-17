@@ -3,18 +3,20 @@
 <img width="1082" height="502" alt="image" src="https://github.com/user-attachments/assets/af6c701d-6d8a-4a89-9238-5c5a0c94ed26" />
 
 LIZA is a thin MS-DOS 6.22 client for a persistent Pi agent running on Windows.
-The DOS program displays the conversation and exposes eight sequential tools:
-`dos_shell`, `read_file`, `write_file`, `list_files`, `compile_c`, and
-`compile_asm`, plus `tavily_search` and `fetch_url`. File and shell operations occur on the guest. Compilation uses the
-fixed Open Watcom host toolchain and transfers only the resulting DOS executable.
+The DOS program displays the conversation and exposes seven sequential tools:
+`dos_shell`, `read_file`, `write_file`, `list_files`, `run_python`,
+`tavily_search`, and `fetch_url`. File and shell operations occur on the
+guest. Python runs in a sandboxed process on the Windows host.
 
 ## Requirements
 
 - Windows 11 and 86Box 5.4
 - Node.js 22.19 or newer
-- Open Watcom 16-bit DOS compiler at `C:\WATCOM16`
+- Open Watcom 16-bit DOS compiler at `C:\WATCOM16` (to build the DOS client)
+- Python 3 on `PATH` for `run_python` (NumPy, SciPy, pandas, Matplotlib, SymPy)
 - MS-DOS 6.22 guest with an emulated COM1 connection
-- `OPENROUTER_API_KEY` in the host environment
+- `MIMO_API_KEY` in the host environment
+- `OPENROUTER_API_KEY` in the host environment to use `/MODEL ds`
 - `TAVILY_API_KEY` in the host environment for web search and URL fetching
 
 ## Host
@@ -44,19 +46,23 @@ baudrate = 115200
 For a physical or paired virtual serial port, set `LIZA_PORT` (for example
 `COM2`) and optionally `LIZA_BAUD` before running the host.
 
-The host restores the latest Pi conversation from `.liza\sessions`. In
-interactive mode, `/NEW` creates a new persistent conversation. Model routing is
-fixed in `config\models.json` to OpenRouter model `deepseek/deepseek-v4-pro`
-with automatic provider routing and a 384,000-token maximum
-output. API keys are read from `OPENROUTER_API_KEY` and `TAVILY_API_KEY` and are not stored here.
-LIZA uses Tavily for its explicit web-search and URL-fetch tools.
+Each LIZA launch creates a new Pi conversation in `.liza\sessions`; no earlier
+conversation is resumed. In interactive mode, `/NEW` creates another new
+conversation. The configured MiMo model is `mimo-v2.5-pro`; its limits are
+defined in `config\models.json`. The optional DeepSeek alias uses OpenRouter.
+API keys are read from `MIMO_API_KEY`, `OPENROUTER_API_KEY`, and
+`TAVILY_API_KEY` and are not stored here. LIZA uses
+Tavily for explicit web search and URL fetching.
+MiMo V2.5 Pro uses its OpenAI-compatible endpoint; function calling and
+reasoning-content replay are enabled for LIZA's tools. The model also supports
+JSON structured output when a future tool needs it.
 
 ## DOS client
 
 Build the 16-bit real-mode executable and transfer image:
 
 ```powershell
-.\tools\build_dos.ps1
+npm run build:dos
 ```
 
 Mount `dos\LIZA-DOS.img` as a 1.44 MB floppy and copy `LIZA.EXE` to the DOS hard
@@ -68,10 +74,14 @@ C:\>LIZA
 ```
 
 With no arguments, LIZA stays in a scrolling interactive session. `/EXIT`
-returns to DOS, `/NEW` starts a new conversation, and Esc cancels the active
-model turn. Shell commands appear as `[EXEC]`; successful raw output is captured
-for Pi and remains hidden. `CD`, drive changes, and `SET` persist until that
-particular `LIZA.EXE` process exits.
+returns to DOS, `/NEW` starts a new conversation, `/THEME` reapplies the default
+theme, `/MODEL` displays the aliases `mimo` and `ds`; use `/MODEL mimo` or
+`/MODEL ds` (also `/MODEL deepseek`) to select one. `/EFFORT` displays or
+sets the active model's reasoning level (`off` or `high` for MiMo; `off`,
+`high`, or `xhigh` for DeepSeek), `/STATUS` displays the active model and
+effort, and Esc cancels the active model turn. Successful command output is
+captured for Pi and remains hidden. `CD`, drive changes, and `SET` persist until
+that particular `LIZA.EXE` process exits.
 
 LIZA retains the most recent 150 display lines. While it is processing a turn,
 Up and Down scroll one line, PgUp and PgDn scroll 20 lines, and Home and End
@@ -89,16 +99,18 @@ to 32,767 characters per overwrite or append call and converts line endings to
 DOS CRLF. `list_files` returns at most 50 DOS 8.3 entries per page. These tools
 exchange chunks over the serial protocol and never access the Windows filesystem.
 
-`compile_c` accepts one strict ANSI C89/C90 translation unit and produces a
-16-bit large-model real-mode DOS MZ executable for the 80386. `compile_asm`
-accepts Open Watcom WASM MASM-style segmented assembly, not NASM or GAS syntax,
-and links a real-mode DOS MZ executable. Both tools use fixed compiler/linker
-arguments and transfer the binary to the requested DOS path. Programs run through
-`dos_shell`.
+`run_python` executes Python 3 source on the Windows host in a fresh temporary
+directory with a scrubbed environment — host variables such as API keys are not
+visible — and a bounded runtime, returning stdout, stderr, and the exit code as
+text. NumPy, SciPy, pandas, Matplotlib, and SymPy are available.
 
-Assistant Markdown is rendered incrementally without ANSI.SYS. Version 0.1
-styles headings, bold and emphasis, inline and fenced code, lists, task lists,
-quotes, horizontal rules, and links using VGA attributes. Links are display-only.
-Images, HTML, tables, math, diagrams, and arbitrary CSS are not rendered.
+Assistant Markdown is rendered incrementally without ANSI.SYS. The default
+LIZA theme uses a black background; `/THEME` and `/THEME DEFAULT` apply it.
+Tool activity stays on one line: `[EXEC]`, `[READ]`, `[WRITE]`, `[FILES]`,
+`[SEARCH]`, `[FETCH]`, and `[PYTHON]` animate while running and become `[OK]`
+or `[FAIL]` when complete. Version 0.1 styles headings, bold and emphasis,
+inline and fenced code, lists, task lists, quotes, horizontal rules, and links
+using VGA attributes. Links are display-only. Images, HTML, tables, math,
+diagrams, and arbitrary CSS are not rendered.
 
 The complete wire specification is in `protocol\PROTOCOL.md`.

@@ -53,6 +53,7 @@ belonging to that operation use the same sequence.
 | 27 | `LIST_FILES_CHUNK` | DOS to host | tab-separated directory entries |
 | 28 | `LIST_FILES_END` | DOS to host | status, next cursor, and EOF flag |
 | 29 | `STYLED_ASSISTANT_CHUNK` | host to DOS | style color byte followed by text |
+| 30 | `TOOL_STATUS` | host to DOS | state byte, ASCII label, NUL, optional detail |
 
 Session mode 1 is one-shot and mode 2 is interactive. A prompt consists of zero
 or more `PROMPT_CHUNK` frames followed by `PROMPT_END`. During the resulting
@@ -96,6 +97,12 @@ code, and light gray for quotes. Remaining bytes are DOS-safe ASCII. The DOS cli
 writes these spans through BIOS video services, performs 80-column wrapping and
 25-row scrolling, and does not require ANSI.SYS. Markdown parsing remains entirely
 on the host.
+
+`TOOL_STATUS` has state `0` while a host-side tool is running, `1` when it
+succeeds, and `2` when it fails. The DOS client displays it as a single
+in-place status line with a four-frame spinner, then replaces its prefix with
+`[OK]` or `[FAIL]`. DOS-local shell and file requests use the same display
+locally without sending this frame.
 
 ## Recovery
 

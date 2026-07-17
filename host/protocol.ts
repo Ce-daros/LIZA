@@ -33,6 +33,7 @@ export enum MessageType {
   ListFilesChunk = 27,
   ListFilesEnd = 28,
   StyledAssistantChunk = 29,
+  ToolStatus = 30,
 }
 
 export enum TextStyle {

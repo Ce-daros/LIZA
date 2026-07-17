@@ -1,17 +1,60 @@
 {
   "providers": {
+    "mimo": {
+      "baseUrl": "https://api.xiaomimimo.com/v1",
+      "api": "openai-completions",
+      "apiKey": "$MIMO_API_KEY",
+      "headers": {
+        "api-key": "$MIMO_API_KEY"
+      },
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "requiresReasoningContentOnAssistantMessages": true,
+        "thinkingFormat": "deepseek"
+      },
+      "models": [
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "MiMo V2.5 Pro",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "off",
+            "high": "default"
+          },
+          "input": ["text"],
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
     "openrouter": {
       "baseUrl": "https://openrouter.ai/api/v1",
       "api": "openai-completions",
       "apiKey": "$OPENROUTER_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "thinkingFormat": "openrouter"
+      },
       "models": [
         {
           "id": "deepseek/deepseek-v4-pro",
           "name": "DeepSeek V4 Pro",
-          "reasoning": false,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
           "input": ["text"],
-          "contextWindow": 1048576,
-          "maxTokens": 384000,
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
           "cost": {
             "input": 0,
             "output": 0,

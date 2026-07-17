@@ -1,7 +1,8 @@
 import { ClientMode, decodeExitCode, encodeFrame, Frame, MessageType, splitPayload, TextStyle } from "./protocol.js";
+import type { ToolStatusState } from "./tool-status.js";
 
 export interface PeerHandlers {
-  onStart(mode: ClientMode, cwd: string): void;
+  onStart(mode: ClientMode, cwd: string): void | Promise<void>;
   onPrompt(sequence: number, prompt: string): void;
   onCancel(sequence: number): void;
   onNewSession(sequence: number): void;
@@ -12,6 +13,7 @@ interface PendingExecution {
   chunks: Buffer[];
   resolve(result: ShellResult): void;
   reject(error: Error): void;
+  timer: NodeJS.Timeout;
 }
 
 interface PendingRead {
@@ -19,12 +21,14 @@ interface PendingRead {
   chunks: Buffer[];
   resolve(result: ReadFileResult): void;
   reject(error: Error): void;
+  timer: NodeJS.Timeout;
 }
 
 interface PendingWrite {
   kind: "write";
   resolve(result: WriteFileResult): void;
   reject(error: Error): void;
+  timer: NodeJS.Timeout;
 }
 
 interface PendingList {
@@ -32,6 +36,7 @@ interface PendingList {
   chunks: Buffer[];
   resolve(result: ListFilesResult): void;
   reject(error: Error): void;
+  timer: NodeJS.Timeout;
 }
 
 export interface ShellResult {
@@ -66,7 +71,7 @@ export class DosPeer {
   private nextSequence = 1;
   private connected = true;
 
-  constructor(private readonly write: FrameWriter) {}
+  constructor(private readonly write: FrameWriter, private readonly operationTimeoutMs = 300_000) {}
 
   get isConnected(): boolean {
     return this.connected;
@@ -82,7 +87,7 @@ export class DosPeer {
         this.sendFrame(MessageType.HelloAck, frame.sequence, Buffer.from("LIZA-HOST/0.1", "ascii"));
         return;
       case MessageType.SessionStart:
-        this.receiveStart(frame);
+        void this.receiveStart(frame);
         return;
       case MessageType.PromptChunk:
         this.receivePromptChunk(frame);
@@ -134,7 +139,7 @@ export class DosPeer {
     if (payload.length === 0 || payload.length > 126) throw new RangeError("DOS command must contain 1 to 126 bytes");
     const sequence = this.allocateSequence();
     return new Promise<ShellResult>((resolve, reject) => {
-      this.executions.set(sequence, { chunks: [], resolve, reject });
+      this.executions.set(sequence, { chunks: [], resolve, reject, timer: this.armTimeout(sequence, "DOS command") });
       this.sendFrame(MessageType.ExecRequest, sequence, payload);
     });
   }
@@ -149,7 +154,7 @@ export class DosPeer {
     filePath.copy(payload, 6);
     const sequence = this.allocateSequence();
     return new Promise<ReadFileResult>((resolve, reject) => {
-      this.fileOperations.set(sequence, { kind: "read", chunks: [], resolve, reject });
+      this.fileOperations.set(sequence, { kind: "read", chunks: [], resolve, reject, timer: this.armTimeout(sequence, "DOS file operation") });
       this.sendFrame(MessageType.ReadFileRequest, sequence, payload);
     });
   }
@@ -167,7 +172,7 @@ export class DosPeer {
     const sequence = this.allocateSequence();
     const start = Buffer.concat([Buffer.from([mode === "overwrite" ? 1 : 2]), filePath]);
     return new Promise<WriteFileResult>((resolve, reject) => {
-      this.fileOperations.set(sequence, { kind: "write", resolve, reject });
+      this.fileOperations.set(sequence, { kind: "write", resolve, reject, timer: this.armTimeout(sequence, "DOS file operation") });
       this.sendFrame(MessageType.WriteFileStart, sequence, start);
       for (const chunk of splitPayload(contentBytes, 512)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
       this.sendFrame(MessageType.WriteFileEnd, sequence, Buffer.alloc(0));
@@ -187,7 +192,7 @@ export class DosPeer {
     mask.copy(payload, 4 + directory.length);
     const sequence = this.allocateSequence();
     return new Promise<ListFilesResult>((resolve, reject) => {
-      this.fileOperations.set(sequence, { kind: "list", chunks: [], resolve, reject });
+      this.fileOperations.set(sequence, { kind: "list", chunks: [], resolve, reject, timer: this.armTimeout(sequence, "DOS file operation") });
       this.sendFrame(MessageType.ListFilesRequest, sequence, payload);
     });
   }
@@ -206,6 +211,16 @@ export class DosPeer {
     }
   }
 
+  sendToolStatus(sequence: number, state: ToolStatusState, label: string, detail = ""): void {
+    const stateByte = state === "start" ? 0 : state === "ok" ? 1 : 2;
+    const text = Buffer.concat([
+      Buffer.from(toDosAscii(label), "ascii"),
+      Buffer.from([0]),
+      Buffer.from(toDosAscii(detail), "ascii"),
+    ]);
+    this.sendFrame(MessageType.ToolStatus, sequence, Buffer.concat([Buffer.from([stateByte]), text]));
+  }
+
   sendComplete(sequence: number): void {
     this.sendFrame(MessageType.Complete, sequence, Buffer.alloc(0));
   }
@@ -222,21 +237,28 @@ export class DosPeer {
   close(): void {
     if (!this.connected) return;
     this.connected = false;
-    for (const pending of this.executions.values()) pending.reject(new Error("DOS client disconnected during command execution"));
-    for (const pending of this.fileOperations.values()) pending.reject(new Error("DOS client disconnected during file operation"));
+    for (const pending of this.executions.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("DOS client disconnected during command execution"));
+    }
+    for (const pending of this.fileOperations.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("DOS client disconnected during file operation"));
+    }
     this.executions.clear();
     this.fileOperations.clear();
     this.promptChunks.clear();
     this.handlers?.onDisconnect();
   }
 
-  private receiveStart(frame: Frame): void {
+  private async receiveStart(frame: Frame): Promise<void> {
     const mode = frame.payload[0];
     if (mode !== ClientMode.OneShot && mode !== ClientMode.Interactive) {
       this.sendError(frame.sequence, "Invalid client mode");
       return;
     }
-    this.handlers?.onStart(mode, frame.payload.subarray(1).toString("ascii"));
+    const started = this.handlers?.onStart(mode, frame.payload.subarray(1).toString("ascii"));
+    if (started) await started;
     this.sendReady(frame.sequence);
   }
 
@@ -268,6 +290,7 @@ export class DosPeer {
       return;
     }
     this.executions.delete(frame.sequence);
+    clearTimeout(pending.timer);
     const cwd = frame.payload.subarray(2).toString("ascii");
     if (cwd.length === 0) {
       pending.reject(new Error("DOS command result did not include a working directory"));
@@ -355,12 +378,24 @@ export class DosPeer {
       return undefined;
     }
     this.fileOperations.delete(sequence);
+    clearTimeout(pending.timer);
     return pending;
   }
 
   private sendFrame(type: MessageType, sequence: number, payload: Buffer): void {
     if (!this.connected) throw new Error("DOS client is disconnected");
     this.write(encodeFrame({ type, sequence, payload }));
+  }
+
+  private armTimeout(sequence: number, operation: string): NodeJS.Timeout {
+    const timer = setTimeout(() => {
+      const pending = this.executions.get(sequence) ?? this.fileOperations.get(sequence);
+      this.executions.delete(sequence);
+      this.fileOperations.delete(sequence);
+      pending?.reject(new Error(`${operation} timed out after ${this.operationTimeoutMs} ms without a response from the DOS guest; it may be busy or stuck`));
+    }, this.operationTimeoutMs);
+    timer.unref();
+    return timer;
   }
 
   private allocateSequence(): number {
@@ -398,7 +433,7 @@ export function toDosAscii(text: string): string {
       };
       return replacements[character]!;
     })
-    .replace(/[^\x09\x0a\x20-\x7e]/g, "?");
+    .replace(/[^\x09\x0a\x20-\x7e]/g, "");
 }
 
 function encodePath(path: string): Buffer {

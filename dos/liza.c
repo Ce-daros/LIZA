@@ -34,14 +34,31 @@ static unsigned short active_write_sequence;
 static unsigned short active_write_status;
 static unsigned long active_write_bytes;
 static unsigned char terminal_attribute;
+static unsigned char terminal_original_attribute;
 static int terminal_attribute_known;
 static unsigned char terminal_text[HISTORY_ROWS][DISPLAY_WIDTH];
 static unsigned char terminal_colors[HISTORY_ROWS][DISPLAY_WIDTH];
 static unsigned long terminal_cursor_row;
 static unsigned char terminal_cursor_column;
 static unsigned long terminal_view_row;
+static int terminal_status_active;
+static unsigned long terminal_status_row;
+static unsigned char terminal_status_column;
+static unsigned char terminal_status_prefix_width;
+static unsigned char terminal_status_spinner;
+static unsigned long terminal_status_tick;
 
 static unsigned char styled_attribute(unsigned char foreground);
+
+static unsigned long bios_ticks(void)
+{
+    union REGS input;
+    union REGS output;
+
+    input.h.ah = 0x00;
+    int86(0x1a, &input, &output);
+    return ((unsigned long)output.x.cx << 16) | output.x.dx;
+}
 
 static void terminal_set_cursor(unsigned char row, unsigned char column)
 {
@@ -158,6 +175,74 @@ static void terminal_write(const char *text)
                     styled_attribute(0x07), 1);
 }
 
+static void terminal_status_replace(unsigned char offset, unsigned char character,
+                                    unsigned char color)
+{
+    unsigned index = (unsigned)(terminal_status_row % HISTORY_ROWS);
+    terminal_text[index][terminal_status_column + offset] = character;
+    terminal_colors[index][terminal_status_column + offset] = color;
+}
+
+static void terminal_status_start(const char *label, const char *detail)
+{
+    char text[DISPLAY_WIDTH + 1];
+    unsigned room;
+    unsigned length;
+
+    if (terminal_status_active) return;
+    if (last_output != '\n') terminal_write("\n");
+    terminal_status_row = terminal_cursor_row;
+    terminal_status_column = terminal_cursor_column;
+    strcpy(text, "[");
+    strcat(text, label);
+    strcat(text, "] ");
+    terminal_status_prefix_width = strlen(text);
+    room = DISPLAY_WIDTH - terminal_status_prefix_width - 3;
+    length = strlen(detail);
+    if (length > room) length = room;
+    strncat(text, detail, length);
+    strcat(text, " |");
+    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
+                    styled_attribute(0x0e), 1);
+    terminal_status_spinner = 0;
+    terminal_status_tick = bios_ticks();
+    terminal_status_active = 1;
+}
+
+static void terminal_status_finish(int success)
+{
+    const char *prefix = success ? "[OK]" : "[FAIL]";
+    unsigned char color = success ? 0x0a : 0x0c;
+    unsigned i;
+
+    if (!terminal_status_active) return;
+    for (i = 0; i < terminal_status_prefix_width; ++i)
+        terminal_status_replace(i, i < strlen(prefix) ? prefix[i] : ' ',
+                                styled_attribute(color));
+    terminal_status_replace(terminal_cursor_column - terminal_status_column - 1,
+                            ' ', styled_attribute(color));
+    terminal_status_active = 0;
+    terminal_redraw();
+    terminal_write("\n");
+}
+
+static void terminal_status_update(void)
+{
+    static const char spinner[] = "|/-\\";
+    unsigned long ticks;
+    unsigned char offset;
+
+    if (!terminal_status_active) return;
+    ticks = bios_ticks();
+    if (ticks - terminal_status_tick < 3) return;
+    terminal_status_tick = ticks;
+    terminal_status_spinner = (terminal_status_spinner + 1) & 3;
+    offset = terminal_cursor_column - terminal_status_column - 1;
+    terminal_status_replace(offset, spinner[terminal_status_spinner],
+                            styled_attribute(0x0e));
+    if (terminal_view_row == terminal_latest_view_row()) terminal_redraw();
+}
+
 static void terminal_record(const char *text)
 {
     terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
@@ -210,6 +295,18 @@ static void terminal_reset(void)
     terminal_cursor_row = 0;
     terminal_cursor_column = 0;
     terminal_view_row = 0;
+    terminal_status_active = 0;
+}
+
+static void terminal_apply_default_theme(void)
+{
+    styled_attribute(0x07);
+    terminal_attribute = 0x07;
+}
+
+static void terminal_restore_theme(void)
+{
+    terminal_attribute = terminal_original_attribute;
 }
 
 static void begin_host_wait(void)
@@ -442,8 +539,9 @@ static int return_command_result(unsigned short sequence, char *command)
     unsigned short count;
     int result;
 
-    terminal_log("[EXEC] ", command);
+    terminal_status_start("EXEC", command);
     result = execute_captured(command);
+    terminal_status_finish(result == 0);
     begin_host_wait();
     file = fopen(CAPTURE_FILE, "rb");
     if (file != NULL) {
@@ -461,11 +559,6 @@ static int return_command_result(unsigned short sequence, char *command)
     if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
     count = (unsigned short)strlen(cwd);
     memcpy(ending + 2, cwd, count);
-    if (result != 0) {
-        char message[32];
-        sprintf(message, "[ERRORLEVEL %d]\n", result);
-        terminal_write(message);
-    }
     return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 2);
 }
 
@@ -516,7 +609,7 @@ static int handle_read_file(const liza_frame *request)
     offset = read_u32(request->payload);
     maximum = request->payload[4] | ((unsigned short)request->payload[5] << 8);
     copy_path(path, request->payload + 6, request->length - 6);
-    terminal_log("[READ] ", path);
+    terminal_status_start("READ", path);
     file = fopen(path, "rb");
     if (file == NULL) {
         status = errno;
@@ -548,6 +641,7 @@ static int handle_read_file(const liza_frame *request)
     write_u16(ending, status);
     write_u32(ending + 2, position);
     ending[6] = position >= end;
+    terminal_status_finish(status == 0);
     return send_at(LIZA_READ_FILE_END, request->sequence, ending, sizeof(ending));
 }
 
@@ -566,7 +660,7 @@ static int handle_write_start(const liza_frame *request)
     if (request->payload[0] == 1) mode = "wb";
     else if (request->payload[0] == 2) mode = "ab";
     else return 0;
-    terminal_log("[WRITE] ", path);
+    terminal_status_start("WRITE", path);
     active_write_file = fopen(path, mode);
     if (active_write_file == NULL) active_write_status = errno;
     return 1;
@@ -596,6 +690,7 @@ static int handle_write_end(const liza_frame *request)
     }
     write_u16(result, active_write_status);
     write_u32(result + 2, active_write_bytes);
+    terminal_status_finish(active_write_status == 0);
     return send_at(LIZA_WRITE_FILE_RESULT, request->sequence, result,
                    sizeof(result));
 }
@@ -635,7 +730,7 @@ static int handle_list_files(const liza_frame *request)
     if (length != 0 && specification[length - 1] != '\\' &&
         specification[length - 1] != '/') strcat(specification, "\\");
     strcat(specification, pattern);
-    terminal_log("[LIST] ", specification);
+    terminal_status_start("FILES", specification);
 
     status = _dos_findfirst(specification,
                             _A_RDONLY | _A_HIDDEN | _A_SYSTEM |
@@ -669,6 +764,7 @@ static int handle_list_files(const liza_frame *request)
     write_u16(ending, 0);
     write_u16(ending + 2, next);
     ending[4] = eof;
+    terminal_status_finish(1);
     return send_at(LIZA_LIST_FILES_END, request->sequence, ending,
                    sizeof(ending));
 }
@@ -687,10 +783,10 @@ static unsigned char styled_attribute(unsigned char foreground)
         input.h.ah = 0x08;
         input.h.bh = 0;
         int86(0x10, &input, &output);
+        terminal_original_attribute = output.h.ah;
         terminal_attribute = output.h.ah;
         terminal_attribute_known = 1;
     }
-    if (foreground == 0x07) return terminal_attribute;
     return (terminal_attribute & 0xf0) | (foreground & 0x0f);
 }
 
@@ -698,6 +794,29 @@ static void display_styled(unsigned char attribute, const unsigned char *text,
                            unsigned short length)
 {
     terminal_append(text, length, styled_attribute(attribute), 1);
+}
+
+static void handle_tool_status(const liza_frame *status)
+{
+    char label[16];
+    char detail[DISPLAY_WIDTH + 1];
+    unsigned short index;
+    unsigned short used = 0;
+
+    if (status->length < 2) return;
+    index = 1;
+    while (index < status->length && status->payload[index] != '\0' &&
+           used + 1 < sizeof(label)) label[used++] = status->payload[index++];
+    label[used] = '\0';
+    if (index == status->length) return;
+    ++index;
+    used = 0;
+    while (index < status->length && used + 1 < sizeof(detail))
+        detail[used++] = status->payload[index++];
+    detail[used] = '\0';
+    if (status->payload[0] == 0) terminal_status_start(label, detail);
+    else if (status->payload[0] == 1) terminal_status_finish(1);
+    else if (status->payload[0] == 2) terminal_status_finish(0);
 }
 
 static int run_turn(const char *prompt)
@@ -743,6 +862,8 @@ static int run_turn(const char *prompt)
                 if (!handle_write_end(&frame)) return 0;
             } else if (frame.type == LIZA_LIST_FILES_REQUEST) {
                 if (!handle_list_files(&frame)) return 0;
+            } else if (frame.type == LIZA_TOOL_STATUS && frame.sequence == sequence) {
+                handle_tool_status(&frame);
             } else if (frame.type == LIZA_ERROR && frame.sequence == sequence) {
                 if (last_output != '\n') terminal_write("\n");
                 terminal_write("LIZA: ");
@@ -757,6 +878,7 @@ static int run_turn(const char *prompt)
             }
         }
         if (!maintain_link()) return 0;
+        terminal_status_update();
         if (kbhit()) {
             int key = getch();
             if (!cancelled && key == 27) {
@@ -791,12 +913,14 @@ static int interactive(void)
     char cwd[80];
     unsigned short sequence;
 
-    terminal_write("LIZA 0.1  /EXIT returns to DOS  /NEW starts a new conversation\n");
+    display_styled(0x0b, (const unsigned char *)"LIZA 0.1", 8);
+    terminal_write("  /EXIT /NEW /THEME /MODEL /EFFORT /STATUS\n");
     for (;;) {
         if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
-        terminal_write("\n[");
-        terminal_write(cwd);
-        terminal_write("] > ");
+        terminal_write("\n");
+        display_styled(0x0a, (const unsigned char *)"[", 1);
+        display_styled(0x0a, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
+        display_styled(0x0a, (const unsigned char *)"] > ", 4);
         if (fgets(prompt, sizeof(prompt), stdin) == NULL) return 1;
         prompt[strcspn(prompt, "\r\n")] = '\0';
         terminal_record(prompt);
@@ -822,6 +946,11 @@ static int interactive(void)
             }
             continue;
         }
+        if (same_text(prompt, "/theme") || same_text(prompt, "/theme default")) {
+            terminal_apply_default_theme();
+            display_styled(0x0a, (const unsigned char *)"Theme: default\n", 15);
+            continue;
+        }
         if (prompt[0] != '\0' && !run_turn(prompt)) return 0;
     }
 }
@@ -836,6 +965,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "LIZA: prompt is too long.\n");
         return 2;
     }
+    terminal_apply_default_theme();
     terminal_reset();
     serial_open();
     terminal_write("Connecting to LIZA host...");
@@ -852,5 +982,6 @@ int main(int argc, char **argv)
         active_write_file = NULL;
     }
     send_new(LIZA_DISCONNECT, (const unsigned char *)"", 0);
+    terminal_restore_theme();
     return ok ? 0 : 1;
 }

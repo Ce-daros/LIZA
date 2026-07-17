@@ -5,17 +5,20 @@
 - [x] Framed serial protocol with CRC, partial-read handling, resynchronization,
   chunked streams, cancellation, errors, disconnect, and session control
 - [x] Windows named-pipe server for 86Box 5.4 and optional physical serial port
-- [x] Persistent Pi conversation sessions and explicit new-session command
-- [x] OpenRouter DeepSeek V4 Pro configuration with automatic provider routing
-- [x] Provider-default reasoning and high maximum output token configuration
-- [x] Eight schema-constrained sequential tools: `dos_shell`, `read_file`,
-  `write_file`, `list_files`, `compile_c`, `compile_asm`, `tavily_search`,
-  and `fetch_url`
-- [x] Strict C89/C90 and WASM/MASM-style real-mode DOS cross-compilation
+- [x] Fresh Pi conversation for every LIZA launch and explicit new-session command
+- [x] Xiaomi MiMo V2.5 Pro OpenAI-compatible provider configuration
+- [x] MiMo function-calling, structured-output, and reasoning-capable model registration
+- [x] OpenRouter DeepSeek V4 Pro provider with runtime effort switching
+- [x] Seven schema-constrained sequential tools: `dos_shell`, `read_file`,
+  `write_file`, `list_files`, `run_python`, `tavily_search`, and `fetch_url`
+- [x] Sandboxed host-side `run_python` execution with common scientific
+  libraries
+- [x] Host-side timeout for DOS command and file operations
 - [x] Streaming line-level Markdown rendering through direct VGA attributes
 - [x] Streamed assistant output and Normal-mode command display filtering
 - [x] One-shot `LIZA prompt` DOS mode
 - [x] Scrolling interactive `LIZA` DOS mode with `/NEW`, `/EXIT`, and Esc cancel
+- [x] Runtime `/MODEL`, `/EFFORT`, and `/STATUS` commands
 - [x] 150-line display history with Up/Down/PgUp/PgDn/Home/End scrolling
 - [x] Synchronous stdout/stderr capture and chunked return without retaining long
   command output in DOS conventional memory
@@ -29,7 +32,7 @@
 ## Verified
 
 - TypeScript strict build
-- 28 automated host/protocol tests
+- 33 automated host/protocol tests
 - Pi model registry and persistent session initialization without a model request
 - Open Watcom 16-bit DOS compilation
 - 1.44 MB FAT12 image size and `55 AA` boot signature
@@ -38,7 +41,7 @@
 ## Manual integration checks
 
 The final model-backed checks require the running 86Box guest and consume the
-configured OpenRouter account. Run both after copying the rebuilt `LIZA.EXE`:
+configured MiMo account. Run both after copying the rebuilt `LIZA.EXE`:
 
 ```dos
 LIZA what's your name?

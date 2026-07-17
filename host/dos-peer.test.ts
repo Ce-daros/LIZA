@@ -84,8 +84,8 @@ test("chunks long assistant output and routes cancellation", () => {
   assert.equal(Buffer.concat(sent.map((frame) => frame.payload)).toString("ascii"), `${"A".repeat(2300)} LIZA's`);
 });
 
-test("transliterates common model punctuation for DOS", () => {
-  assert.equal(toDosAscii("It\u2019s \u2014 \u201chello\u201d\u2026 \u2192 \u2022"), "It's - \"hello\"... -> *");
+test("transliterates supported punctuation and drops unsupported characters for DOS", () => {
+  assert.equal(toDosAscii("It\u2019s \u2014 \u201chello\u201d\u2026 \u2192 \u2022 \ud83d\udea8"), "It's - \"hello\"... -> * ");
 });
 
 test("streams bounded DOS file reads", async () => {
@@ -149,4 +149,29 @@ test("returns a paginated DOS directory listing", async () => {
   assert.match(result.entries, /STORY\.TXT/);
   assert.equal(result.nextCursor, 1);
   assert.equal(result.eof, true);
+});
+
+test("rejects a pending command when the guest stops responding", async () => {
+  const peer = new DosPeer(() => {}, 50);
+  await assert.rejects(peer.execute("DIR"), /DOS command timed out after 50 ms/);
+});
+
+test("rejects a pending file operation when the guest stops responding", async () => {
+  const peer = new DosPeer(() => {}, 50);
+  await assert.rejects(peer.readFile("C:\A.TXT", 0, 100), /DOS file operation timed out after 50 ms/);
+});
+
+test("sends compact tool status updates to the DOS client", () => {
+  const sent: Frame[] = [];
+  const peer = new DosPeer((wire) => sent.push(decodeWire(wire)));
+  peer.sendToolStatus(19, "start", "TASK", "detail");
+  peer.sendToolStatus(19, "ok", "TASK");
+  peer.sendToolStatus(19, "fail", "TASK");
+
+  assert.deepEqual(sent.map((frame) => [frame.type, frame.sequence, frame.payload[0]]), [
+    [MessageType.ToolStatus, 19, 0],
+    [MessageType.ToolStatus, 19, 1],
+    [MessageType.ToolStatus, 19, 2],
+  ]);
+  assert.equal(sent[0]!.payload.subarray(1).toString("ascii"), "TASK\0detail");
 });

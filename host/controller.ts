@@ -1,17 +1,29 @@
 import { ClientMode } from "./protocol.js";
 import { DosPeer, ShellResult } from "./dos-peer.js";
-import type { DosContext } from "./personality.js";
+import type { DosContext } from "./system-prompt.js";
 import type { FileOperations } from "./file-tools.js";
 import { MarkdownRenderer } from "./markdown-renderer.js";
+import type { ToolStatusReporter } from "./tool-status.js";
 
 export interface AgentDriver {
   setShellExecutor(executor: (command: string) => Promise<ShellResult>): void;
   setFileOperations(operations: FileOperations): void;
   setDosContext(context: DosContext): void;
+  setToolStatusReporter(reporter: ToolStatusReporter): void;
+  getStatus(): AgentStatus;
+  setModel(modelId: string): Promise<AgentStatus>;
+  setEffort(effort: string): AgentStatus;
   run(prompt: string, onText: (text: string) => void): Promise<void>;
   abort(): Promise<void>;
   newSession(): Promise<void>;
   dispose(): void;
+}
+
+export interface AgentStatus {
+  model: string;
+  effort: string;
+  availableModels: readonly string[];
+  availableEfforts: readonly string[];
 }
 
 export class LizaController {
@@ -24,6 +36,10 @@ export class LizaController {
 
   attach(peer: DosPeer): void {
     this.activePeer = peer;
+    this.agent.setToolStatusReporter((state, label, detail) => {
+      if (this.activeSequence !== undefined && peer.isConnected)
+        peer.sendToolStatus(this.activeSequence, state, label, detail);
+    });
     this.agent.setShellExecutor((command) => {
       this.flushAssistantText();
       return peer.execute(command);
@@ -59,13 +75,27 @@ export class LizaController {
     this.agent.dispose();
   }
 
-  private onStart(mode: ClientMode, cwd: string): void {
+  private async onStart(mode: ClientMode, cwd: string): Promise<void> {
     this.agent.setDosContext({ mode, cwd });
+    await this.agent.newSession();
     const label = mode === ClientMode.OneShot ? "one-shot" : "interactive";
     console.log(`[dos] ${label} session at ${cwd}`);
   }
 
   private async onPrompt(peer: DosPeer, sequence: number, prompt: string): Promise<void> {
+    let commandResult: string | undefined;
+    try {
+      commandResult = await this.handleCommand(prompt);
+    } catch (error) {
+      peer.sendError(sequence, error instanceof Error ? error.message : String(error));
+      peer.sendComplete(sequence);
+      return;
+    }
+    if (commandResult !== undefined) {
+      peer.sendAssistant(sequence, commandResult);
+      peer.sendComplete(sequence);
+      return;
+    }
     if (this.running) {
       peer.sendError(sequence, "LIZA is already processing a request");
       peer.sendComplete(sequence);
@@ -99,6 +129,23 @@ export class LizaController {
     }
   }
 
+  private async handleCommand(prompt: string): Promise<string | undefined> {
+    const [command, argument] = splitCommand(prompt);
+    if (command === "/status") {
+      if (argument.length !== 0) return "Usage: /status\n";
+      return formatStatus(this.agent.getStatus());
+    }
+    if (command === "/model") {
+      if (argument.length === 0) return formatModels(this.agent.getStatus());
+      return formatStatus(await this.agent.setModel(argument.toLowerCase()));
+    }
+    if (command === "/effort") {
+      if (argument.length === 0) return formatEfforts(this.agent.getStatus());
+      return formatStatus(this.agent.setEffort(argument.toLowerCase()));
+    }
+    return undefined;
+  }
+
   private async onCancel(peer: DosPeer, sequence: number): Promise<void> {
     if (!this.running || sequence !== this.activeSequence) return;
     await this.agent.abort();
@@ -127,4 +174,23 @@ export class LizaController {
     if (!this.renderer) throw new Error("Assistant renderer is not active");
     this.renderer.finish();
   }
+}
+
+function splitCommand(prompt: string): [string, string] {
+  const trimmed = prompt.trim();
+  const separator = trimmed.search(/\s/);
+  if (separator < 0) return [trimmed.toLowerCase(), ""];
+  return [trimmed.slice(0, separator).toLowerCase(), trimmed.slice(separator).trim()];
+}
+
+function formatStatus(status: AgentStatus): string {
+  return `Model: ${status.model}\nEffort: ${status.effort}\n`;
+}
+
+function formatModels(status: AgentStatus): string {
+  return `Model: ${status.model}\nAvailable: ${status.availableModels.join(", ")}\n`;
+}
+
+function formatEfforts(status: AgentStatus): string {
+  return `Effort: ${status.effort}\nAvailable: ${status.availableEfforts.join(", ")}\n`;
 }

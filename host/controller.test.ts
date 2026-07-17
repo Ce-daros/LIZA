@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AgentDriver, LizaController } from "./controller.js";
+import { AgentDriver, AgentStatus, LizaController } from "./controller.js";
 import { DosPeer, ShellResult } from "./dos-peer.js";
 import { encodeExitCode, Frame, FrameDecoder, MessageType } from "./protocol.js";
-import type { DosContext } from "./personality.js";
+import type { DosContext } from "./system-prompt.js";
 import type { FileOperations } from "./file-tools.js";
 
 class FakeAgent implements AgentDriver {
@@ -13,20 +13,38 @@ class FakeAgent implements AgentDriver {
   sessions = 1;
   context: DosContext | undefined;
   fileOperations: FileOperations | undefined;
+  status: AgentStatus = {
+    model: "mimo",
+    effort: "high",
+    availableModels: ["mimo", "ds"],
+    availableEfforts: ["off", "high"],
+  };
 
   setShellExecutor(executor: (command: string) => Promise<ShellResult>): void {
     this.executor = executor;
   }
 
   setDosContext(context: DosContext): void { this.context = context; }
+  setToolStatusReporter(): void {}
   setFileOperations(operations: FileOperations): void { this.fileOperations = operations; }
+  getStatus(): AgentStatus { return this.status; }
+  async setModel(modelId: string): Promise<AgentStatus> {
+    if (!this.status.availableModels.includes(modelId)) throw new RangeError(`Unknown model: ${modelId}`);
+    this.status = { ...this.status, model: modelId };
+    return this.status;
+  }
+  setEffort(effort: string): AgentStatus {
+    if (!this.status.availableEfforts.includes(effort)) throw new RangeError(`Unknown effort: ${effort}`);
+    this.status = { ...this.status, effort };
+    return this.status;
+  }
 
   async run(prompt: string, onText: (text: string) => void): Promise<void> {
     this.runs.push(prompt);
-    onText("Let me do it for you.");
+    onText("before");
     const result = await this.executor!("DIR *.TXT /O:-S");
     assert.match(result.output, /NOTES/);
-    onText("Done, the file has saved.\n");
+    onText("after\n");
   }
 
   async abort(): Promise<void> { this.aborted = true; }
@@ -71,14 +89,14 @@ test("flushes streamed text before displaying a shell tool call", async () => {
     .filter((frame) => frame.type === MessageType.StyledAssistantChunk)
     .map((frame) => frame.payload.subarray(1).toString("ascii"))
     .join("");
-  assert.equal(visible, "Let me do it for you.Done, the file has saved.\n");
+  assert.equal(visible, "beforeafter\n");
   assert.doesNotMatch(visible, /18432/);
 
   const firstText = outgoing.findIndex((frame) =>
-    frame.type === MessageType.StyledAssistantChunk && frame.payload.subarray(1).toString("ascii") === "Let me do it for you.");
+    frame.type === MessageType.StyledAssistantChunk && frame.payload.subarray(1).toString("ascii") === "before");
   const command = outgoing.findIndex((frame) => frame.type === MessageType.ExecRequest);
   const lastText = outgoing.findIndex((frame) =>
-    frame.type === MessageType.StyledAssistantChunk && frame.payload.subarray(1).toString("ascii") === "Done, the file has saved.");
+    frame.type === MessageType.StyledAssistantChunk && frame.payload.subarray(1).toString("ascii") === "after");
   assert.ok(firstText < command);
   assert.ok(command < lastText);
 });
@@ -92,4 +110,42 @@ test("starts a fresh persistent conversation on request", async () => {
   await settle();
   assert.equal(agent.sessions, 2);
   assert.deepEqual(outgoing.map((frame) => frame.type), [MessageType.AssistantChunk, MessageType.Complete]);
+});
+
+test("starts a new Pi session for each DOS launch", async () => {
+  const agent = new FakeAgent();
+  const outgoing: Frame[] = [];
+  const peer = new DosPeer((wire) => outgoing.push(decode(wire)));
+  new LizaController(agent).attach(peer);
+
+  peer.receive({
+    type: MessageType.SessionStart,
+    sequence: 31,
+    payload: Buffer.concat([Buffer.from([1]), Buffer.from("C:\\WORK")]),
+  });
+  await settle();
+
+  assert.equal(agent.sessions, 2);
+  assert.deepEqual(agent.context, { mode: 1, cwd: "C:\\WORK" });
+  assert.deepEqual(outgoing.map((frame) => [frame.type, frame.sequence]), [
+    [MessageType.SessionReady, 31],
+  ]);
+});
+
+test("handles model, effort, and status commands without prompting the agent", async () => {
+  const agent = new FakeAgent();
+  const outgoing: Frame[] = [];
+  const peer = new DosPeer((wire) => outgoing.push(decode(wire)));
+  new LizaController(agent).attach(peer);
+
+  for (const [sequence, command] of [[41, "/status"], [42, "/effort off"], [43, "/model ds"]] as const) {
+    peer.receive({ type: MessageType.PromptChunk, sequence, payload: Buffer.from(command) });
+    peer.receive({ type: MessageType.PromptEnd, sequence, payload: Buffer.alloc(0) });
+    await settle();
+  }
+
+  assert.deepEqual(agent.runs, []);
+  assert.equal(agent.status.model, "ds");
+  assert.equal(agent.status.effort, "off");
+  assert.equal(outgoing.filter((frame) => frame.type === MessageType.Complete).length, 3);
 });

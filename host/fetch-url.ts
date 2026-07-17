@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import type { ToolStatusReporter } from "./tool-status.js";
 
 interface TavilyExtractResult {
   url: string;
@@ -18,7 +19,7 @@ interface TavilyExtractResponse {
 
 const MAX_CONTENT_CHARS = 12000;
 
-export function createFetchUrlTool() {
+export function createFetchUrlTool(reportStatus?: ToolStatusReporter) {
   return defineTool({
     name: "fetch_url",
     label: "Fetch a web page",
@@ -29,6 +30,8 @@ export function createFetchUrlTool() {
     }, { additionalProperties: false }),
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
+      reportStatus?.("start", "FETCH");
+      try {
       const apiKey = process.env.TAVILY_API_KEY;
       if (!apiKey) throw new Error("TAVILY_API_KEY is not configured");
 
@@ -65,10 +68,15 @@ export function createFetchUrlTool() {
       const body = result.raw_content.length > limit
         ? `${result.raw_content.slice(0, limit)}\n\n[truncated]`
         : result.raw_content;
+      reportStatus?.("ok", "FETCH");
       return {
         content: [{ type: "text" as const, text: `URL: ${result.url}\n\n${body}` }],
         details: payload,
       };
+      } catch (error) {
+        reportStatus?.("fail", "FETCH");
+        throw error;
+      }
     },
   });
 }
