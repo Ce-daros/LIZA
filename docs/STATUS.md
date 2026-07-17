@@ -8,13 +8,15 @@
 - [x] Persistent Pi conversation sessions and explicit new-session command
 - [x] OpenRouter DeepSeek V4 Pro configuration with automatic provider routing
 - [x] Provider-default reasoning and high maximum output token configuration
-- [x] Six schema-constrained sequential tools: `dos_shell`, `read_file`,
-  `write_file`, `list_files`, `compile_c`, and `compile_asm`
+- [x] Eight schema-constrained sequential tools: `dos_shell`, `read_file`,
+  `write_file`, `list_files`, `compile_c`, `compile_asm`, `tavily_search`,
+  and `fetch_url`
 - [x] Strict C89/C90 and WASM/MASM-style real-mode DOS cross-compilation
 - [x] Streaming line-level Markdown rendering through direct VGA attributes
 - [x] Streamed assistant output and Normal-mode command display filtering
 - [x] One-shot `LIZA prompt` DOS mode
 - [x] Scrolling interactive `LIZA` DOS mode with `/NEW`, `/EXIT`, and Esc cancel
+- [x] 150-line display history with Up/Down/PgUp/PgDn/Home/End scrolling
 - [x] Synchronous stdout/stderr capture and chunked return without retaining long
   command output in DOS conventional memory
 - [x] Per-invocation current directory, drive, and environment persistence
@@ -27,7 +29,7 @@
 ## Verified
 
 - TypeScript strict build
-- 20 automated host/protocol tests, including real C and assembly builds
+- 28 automated host/protocol tests
 - Pi model registry and persistent session initialization without a model request
 - Open Watcom 16-bit DOS compilation
 - 1.44 MB FAT12 image size and `55 AA` boot signature
