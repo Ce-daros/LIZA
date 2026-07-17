@@ -89,10 +89,10 @@ effort, and Esc cancels the active model turn. Successful command output is
 captured for Pi and remains hidden. `CD`, drive changes, and `SET` persist until
 that particular `LIZA.EXE` process exits.
 
-LIZA retains the most recent 150 display lines. While it is processing a turn,
-Up and Down scroll one line, PgUp and PgDn scroll 20 lines, and Home and End
-jump to the oldest and newest retained output. New output follows automatically
-only while viewing the latest screen.
+LIZA retains the most recent 150 display lines. Up and Down scroll one line,
+PgUp and PgDn scroll 20 lines, and Home and End jump to the oldest and newest
+retained output. New output follows automatically only while viewing the latest
+screen.
 
 Each model turn receives the authoritative DOS drive, current directory, client
 mode, shell/display constraints, and invocation lifetime. Every shell result
