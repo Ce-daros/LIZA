@@ -18,6 +18,9 @@ extern int putenv(const char *);
 #define PROMPT_SIZE 512
 #define COMMAND_SIZE 128
 #define CAPTURE_FILE "LIZAOUT.$$$"
+#define DISPLAY_WIDTH 80
+#define DISPLAY_HEIGHT 25
+#define HISTORY_ROWS 150
 
 static unsigned char wire[LIZA_MAX_PAYLOAD + 10];
 static liza_decoder decoder;
@@ -32,6 +35,182 @@ static unsigned short active_write_status;
 static unsigned long active_write_bytes;
 static unsigned char terminal_attribute;
 static int terminal_attribute_known;
+static unsigned char terminal_text[HISTORY_ROWS][DISPLAY_WIDTH];
+static unsigned char terminal_colors[HISTORY_ROWS][DISPLAY_WIDTH];
+static unsigned long terminal_cursor_row;
+static unsigned char terminal_cursor_column;
+static unsigned long terminal_view_row;
+
+static unsigned char styled_attribute(unsigned char foreground);
+
+static void terminal_set_cursor(unsigned char row, unsigned char column)
+{
+    union REGS input;
+    union REGS output;
+    input.h.ah = 0x02;
+    input.h.bh = 0;
+    input.h.dh = row;
+    input.h.dl = column;
+    int86(0x10, &input, &output);
+}
+
+static unsigned long terminal_oldest_row(void)
+{
+    if (terminal_cursor_row + 1 > HISTORY_ROWS)
+        return terminal_cursor_row + 1 - HISTORY_ROWS;
+    return 0;
+}
+
+static unsigned long terminal_latest_view_row(void)
+{
+    if (terminal_cursor_row >= DISPLAY_HEIGHT)
+        return terminal_cursor_row - (DISPLAY_HEIGHT - 1);
+    return 0;
+}
+
+static void terminal_clear_row(unsigned long row)
+{
+    unsigned index = (unsigned)(row % HISTORY_ROWS);
+    memset(terminal_text[index], ' ', DISPLAY_WIDTH);
+    memset(terminal_colors[index], terminal_attribute, DISPLAY_WIDTH);
+}
+
+static void terminal_redraw(void)
+{
+    volatile unsigned short __far *video;
+    unsigned long oldest = terminal_oldest_row();
+    unsigned long source_row;
+    unsigned short row;
+    unsigned short column;
+    unsigned index;
+    unsigned char character;
+    unsigned char color;
+
+    video = (volatile unsigned short __far *)MK_FP(0xb800, 0);
+    for (row = 0; row < DISPLAY_HEIGHT; ++row) {
+        source_row = terminal_view_row + row;
+        for (column = 0; column < DISPLAY_WIDTH; ++column) {
+            if (source_row >= oldest && source_row <= terminal_cursor_row) {
+                index = (unsigned)(source_row % HISTORY_ROWS);
+                character = terminal_text[index][column];
+                color = terminal_colors[index][column];
+            } else {
+                character = ' ';
+                color = terminal_attribute;
+            }
+            video[row * DISPLAY_WIDTH + column] =
+                ((unsigned short)color << 8) | character;
+        }
+    }
+    if (terminal_view_row == terminal_latest_view_row())
+        terminal_set_cursor((unsigned char)(terminal_cursor_row - terminal_view_row),
+                            terminal_cursor_column);
+    else
+        terminal_set_cursor(DISPLAY_HEIGHT - 1, 0);
+}
+
+static void terminal_advance_line(void)
+{
+    ++terminal_cursor_row;
+    terminal_cursor_column = 0;
+    terminal_clear_row(terminal_cursor_row);
+}
+
+static void terminal_put(unsigned char character, unsigned char color)
+{
+    unsigned spaces;
+
+    if (character == '\r') {
+        terminal_cursor_column = 0;
+    } else if (character == '\n') {
+        terminal_advance_line();
+    } else if (character == '\t') {
+        spaces = 8 - (terminal_cursor_column & 7);
+        while (spaces-- != 0) terminal_put(' ', color);
+    } else {
+        terminal_text[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = character;
+        terminal_colors[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = color;
+        ++terminal_cursor_column;
+        if (terminal_cursor_column == DISPLAY_WIDTH) terminal_advance_line();
+    }
+    last_output = character;
+}
+
+static void terminal_append(const unsigned char *text, unsigned short length,
+                            unsigned char color, int redraw)
+{
+    unsigned short i;
+    int follow = terminal_view_row == terminal_latest_view_row();
+    int refresh = follow;
+
+    for (i = 0; i < length; ++i) terminal_put(text[i], color);
+    if (follow) terminal_view_row = terminal_latest_view_row();
+    if (terminal_view_row < terminal_oldest_row()) {
+        terminal_view_row = terminal_oldest_row();
+        refresh = 1;
+    }
+    if (redraw && refresh) terminal_redraw();
+}
+
+static void terminal_write(const char *text)
+{
+    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
+                    styled_attribute(0x07), 1);
+}
+
+static void terminal_record(const char *text)
+{
+    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
+                    styled_attribute(0x07), 0);
+}
+
+static void terminal_log(const char *label, const char *text)
+{
+    terminal_write("\n");
+    terminal_write(label);
+    terminal_write(text);
+    terminal_write("\n");
+}
+
+static void terminal_handle_key(int key)
+{
+    unsigned long oldest;
+    unsigned long latest;
+    int scan;
+
+    if (key != 0 && key != 0xe0) return;
+    scan = getch();
+    oldest = terminal_oldest_row();
+    latest = terminal_latest_view_row();
+    if (scan == 0x48) {
+        if (terminal_view_row > oldest) --terminal_view_row;
+    } else if (scan == 0x50) {
+        if (terminal_view_row < latest) ++terminal_view_row;
+    } else if (scan == 0x49) {
+        if (terminal_view_row > oldest + 20) terminal_view_row -= 20;
+        else terminal_view_row = oldest;
+    } else if (scan == 0x51) {
+        if (terminal_view_row + 20 < latest) terminal_view_row += 20;
+        else terminal_view_row = latest;
+    } else if (scan == 0x47) {
+        terminal_view_row = oldest;
+    } else if (scan == 0x4f) {
+        terminal_view_row = latest;
+    } else {
+        return;
+    }
+    terminal_redraw();
+}
+
+static void terminal_reset(void)
+{
+    unsigned row;
+    styled_attribute(0x07);
+    for (row = 0; row < HISTORY_ROWS; ++row) terminal_clear_row(row);
+    terminal_cursor_row = 0;
+    terminal_cursor_column = 0;
+    terminal_view_row = 0;
+}
 
 static void begin_host_wait(void)
 {
@@ -263,7 +442,7 @@ static int return_command_result(unsigned short sequence, char *command)
     unsigned short count;
     int result;
 
-    printf("\r\n[EXEC] %s\r\n", command);
+    terminal_log("[EXEC] ", command);
     result = execute_captured(command);
     begin_host_wait();
     file = fopen(CAPTURE_FILE, "rb");
@@ -282,7 +461,11 @@ static int return_command_result(unsigned short sequence, char *command)
     if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
     count = (unsigned short)strlen(cwd);
     memcpy(ending + 2, cwd, count);
-    if (result != 0) printf("[ERRORLEVEL %d]\r\n", result);
+    if (result != 0) {
+        char message[32];
+        sprintf(message, "[ERRORLEVEL %d]\n", result);
+        terminal_write(message);
+    }
     return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 2);
 }
 
@@ -333,7 +516,7 @@ static int handle_read_file(const liza_frame *request)
     offset = read_u32(request->payload);
     maximum = request->payload[4] | ((unsigned short)request->payload[5] << 8);
     copy_path(path, request->payload + 6, request->length - 6);
-    printf("\r\n[READ] %s\r\n", path);
+    terminal_log("[READ] ", path);
     file = fopen(path, "rb");
     if (file == NULL) {
         status = errno;
@@ -383,7 +566,7 @@ static int handle_write_start(const liza_frame *request)
     if (request->payload[0] == 1) mode = "wb";
     else if (request->payload[0] == 2) mode = "ab";
     else return 0;
-    printf("\r\n[WRITE] %s\r\n", path);
+    terminal_log("[WRITE] ", path);
     active_write_file = fopen(path, mode);
     if (active_write_file == NULL) active_write_status = errno;
     return 1;
@@ -452,7 +635,7 @@ static int handle_list_files(const liza_frame *request)
     if (length != 0 && specification[length - 1] != '\\' &&
         specification[length - 1] != '/') strcat(specification, "\\");
     strcat(specification, pattern);
-    printf("\r\n[LIST] %s\r\n", specification);
+    terminal_log("[LIST] ", specification);
 
     status = _dos_findfirst(specification,
                             _A_RDONLY | _A_HIDDEN | _A_SYSTEM |
@@ -492,24 +675,7 @@ static int handle_list_files(const liza_frame *request)
 
 static void display_assistant(const unsigned char *text, unsigned short length)
 {
-    unsigned short i;
-    for (i = 0; i < length; ++i) {
-        if (text[i] == '\n' && last_output != '\r') putchar('\r');
-        putchar(text[i]);
-        last_output = text[i];
-    }
-    fflush(stdout);
-}
-
-static void styled_cursor(unsigned char row, unsigned char column)
-{
-    union REGS input;
-    union REGS output;
-    input.h.ah = 0x02;
-    input.h.bh = 0;
-    input.h.dh = row;
-    input.h.dl = column;
-    int86(0x10, &input, &output);
+    terminal_append(text, length, styled_attribute(0x07), 1);
 }
 
 static unsigned char styled_attribute(unsigned char foreground)
@@ -531,59 +697,7 @@ static unsigned char styled_attribute(unsigned char foreground)
 static void display_styled(unsigned char attribute, const unsigned char *text,
                            unsigned short length)
 {
-    union REGS input;
-    union REGS output;
-    unsigned char row;
-    unsigned char column;
-    unsigned short i;
-
-    attribute = styled_attribute(attribute);
-
-    input.h.ah = 0x03;
-    input.h.bh = 0;
-    int86(0x10, &input, &output);
-    row = output.h.dh;
-    column = output.h.dl;
-    for (i = 0; i < length; ++i) {
-        if (text[i] == '\r') {
-            column = 0;
-        } else if (text[i] == '\n') {
-            column = 0;
-            ++row;
-        } else if (text[i] == '\t') {
-            column = (column + 8) & 0xf8;
-            if (column >= 80) {
-                column = 0;
-                ++row;
-            }
-        } else {
-            styled_cursor(row, column);
-            input.h.ah = 0x09;
-            input.h.al = text[i];
-            input.h.bh = 0;
-            input.h.bl = attribute;
-            input.x.cx = 1;
-            int86(0x10, &input, &output);
-            ++column;
-            if (column >= 80) {
-                column = 0;
-                ++row;
-            }
-        }
-        if (row >= 25) {
-            input.h.ah = 0x06;
-            input.h.al = 1;
-            input.h.bh = terminal_attribute;
-            input.h.ch = 0;
-            input.h.cl = 0;
-            input.h.dh = 24;
-            input.h.dl = 79;
-            int86(0x10, &input, &output);
-            row = 24;
-        }
-        last_output = text[i];
-    }
-    styled_cursor(row, column);
+    terminal_append(text, length, styled_attribute(attribute), 1);
 }
 
 static int run_turn(const char *prompt)
@@ -630,23 +744,28 @@ static int run_turn(const char *prompt)
             } else if (frame.type == LIZA_LIST_FILES_REQUEST) {
                 if (!handle_list_files(&frame)) return 0;
             } else if (frame.type == LIZA_ERROR && frame.sequence == sequence) {
-                if (last_output != '\n') printf("\r\n");
-                printf("LIZA: ");
+                if (last_output != '\n') terminal_write("\n");
+                terminal_write("LIZA: ");
                 display_assistant(frame.payload, frame.length);
-                printf("\r\n");
+                terminal_write("\n");
                 last_output = '\n';
             } else if (frame.type == LIZA_COMPLETE && frame.sequence == sequence) {
-                if (last_output != '\n') printf("\r\n");
+                if (last_output != '\n') terminal_write("\n");
                 return cancelled ? 0 : 1;
             } else if (frame.type == LIZA_DISCONNECT) {
                 return 0;
             }
         }
         if (!maintain_link()) return 0;
-        if (!cancelled && kbhit() && getch() == 27) {
-            if (!send_at(LIZA_CANCEL, sequence, (const unsigned char *)"", 0))
-                return 0;
-            cancelled = 1;
+        if (kbhit()) {
+            int key = getch();
+            if (!cancelled && key == 27) {
+                if (!send_at(LIZA_CANCEL, sequence, (const unsigned char *)"", 0))
+                    return 0;
+                cancelled = 1;
+            } else {
+                terminal_handle_key(key);
+            }
         }
     }
 }
@@ -672,12 +791,16 @@ static int interactive(void)
     char cwd[80];
     unsigned short sequence;
 
-    printf("LIZA 0.1  /EXIT returns to DOS  /NEW starts a new conversation\r\n");
+    terminal_write("LIZA 0.1  /EXIT returns to DOS  /NEW starts a new conversation\n");
     for (;;) {
         if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
-        printf("\r\n[%s] > ", cwd);
+        terminal_write("\n[");
+        terminal_write(cwd);
+        terminal_write("] > ");
         if (fgets(prompt, sizeof(prompt), stdin) == NULL) return 1;
         prompt[strcspn(prompt, "\r\n")] = '\0';
+        terminal_record(prompt);
+        terminal_record("\n");
         if (same_text(prompt, "/exit")) return 1;
         if (same_text(prompt, "/new")) {
             sequence = send_new(LIZA_NEW_SESSION, (const unsigned char *)"", 0);
@@ -690,9 +813,9 @@ static int interactive(void)
                     else if (frame.type == LIZA_COMPLETE && frame.sequence == sequence)
                         break;
                     else if (frame.type == LIZA_ERROR && frame.sequence == sequence) {
-                        printf("LIZA: ");
+                        terminal_write("LIZA: ");
                         display_assistant(frame.payload, frame.length);
-                        printf("\r\n");
+                        terminal_write("\n");
                     }
                 }
                 if (!maintain_link()) return 0;
@@ -713,15 +836,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "LIZA: prompt is too long.\n");
         return 2;
     }
+    terminal_reset();
     serial_open();
-    printf("Connecting to LIZA host...");
-    fflush(stdout);
+    terminal_write("Connecting to LIZA host...");
     if (!connect_host() || !start_session(mode)) {
-        printf(" failed.\r\nCheck that the Windows host and 86Box COM1 pipe are running.\r\n");
+        terminal_write(" failed.\nCheck that the Windows host and 86Box COM1 pipe are running.\n");
         return 1;
     }
     begin_host_wait();
-    printf(" connected.\r\n");
+    terminal_write(" connected.\n");
 
     ok = mode == LIZA_MODE_ONE_SHOT ? run_turn(prompt) : interactive();
     if (active_write_file != NULL) {
