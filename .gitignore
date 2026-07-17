@@ -4,6 +4,7 @@ host*.log
 dos/*.obj
 dos/*.exe
 dos/*.map
+dos/*.img
 .cache
 .liza
 .env
