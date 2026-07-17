@@ -137,10 +137,10 @@ export class PiDriver implements AgentDriver {
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
         this.textSink?.(event.assistantMessageEvent.delta);
       } else if (event.type === "tool_execution_start") {
-        const status = toolRegistry.status(event.toolName, event.args);
+        const status = toolRegistry.startStatus(event.toolName, event.args);
         if (status) this.requirePort().reportToolStatus("start", status.label, status.detail);
       } else if (event.type === "tool_execution_end") {
-        const status = toolRegistry.status(event.toolName);
+        const status = toolRegistry.endStatus(event.toolName);
         if (status) {
           const state = toolRegistry.failed(event.toolName, event.result, event.isError) ? "fail" : "ok";
           this.requirePort().reportToolStatus(state, status.label);

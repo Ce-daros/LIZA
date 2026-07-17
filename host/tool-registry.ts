@@ -32,10 +32,15 @@ export class LizaToolRegistry {
     this.byName = new Map(entries.map((entry) => [entry.tool.name, entry]));
   }
 
-  status(toolName: string, args?: unknown): { label: string; detail?: string } | undefined {
+  startStatus(toolName: string, args: unknown): { label: string; detail?: string } | undefined {
     const status = this.byName.get(toolName)?.status;
     if (!status) return undefined;
     return { label: status.label, detail: status.detail?.(args) };
+  }
+
+  endStatus(toolName: string): { label: string } | undefined {
+    const status = this.byName.get(toolName)?.status;
+    return status ? { label: status.label } : undefined;
   }
 
   failed(toolName: string, result: unknown, isError: boolean): boolean {
