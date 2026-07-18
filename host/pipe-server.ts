@@ -15,6 +15,7 @@ export class PipeServer {
 
   start(attach: (socket: net.Socket, label: string) => void): void {
     const server = net.createServer((socket) => {
+      socket.setNoDelay(true);
       this.activeSocket?.destroy();
       this.activeSocket = socket;
       attach(socket, "pipe");
