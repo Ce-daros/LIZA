@@ -1,16 +1,21 @@
 import { ClientMode, decodeExitCode, encodeFrame, Frame, MessageType, splitPayload, TextStyle } from "./protocol.js";
-import { encodeDosPath, toDosAscii } from "./dos-ascii.js";
+import { toDosAscii } from "./dos-ascii.js";
 import { InboundQueue } from "./inbound-queue.js";
 import { PendingRequests, type PendingRequest } from "./pending-requests.js";
+import { buildExecRequest, buildListFilesRequest, buildReadFileRequest, buildWriteFileStart, writeListCursorAndLimit } from "./dos-peer-payload.js";
+import {
+  type FrameWriter,
+  type ListFilesResult,
+  type PeerHandlers,
+  type ReadFileResult,
+  type ShellResult,
+  type WriteFileResult,
+} from "./dos-peer-types.js";
 import type { ToolStatusState } from "./tool-status.js";
 
-export interface PeerHandlers {
-  onStart(mode: ClientMode, cwd: string): void | Promise<void>;
-  onPrompt(sequence: number, prompt: string): void | Promise<void>;
-  onCancel(sequence: number): void | Promise<void>;
-  onNewSession(sequence: number): void | Promise<void>;
-  onDisconnect(): void;
-}
+const FILE_CHUNK_BYTES = 512;
+const STYLED_CHUNK_BYTES = 1023;
+const ERROR_MESSAGE_BYTES = 1024;
 
 interface PendingExecution extends PendingRequest {
   chunks: Buffer[];
@@ -34,29 +39,7 @@ interface PendingList extends PendingRequest {
   resolve(result: ListFilesResult): void;
 }
 
-export interface ShellResult {
-  output: string;
-  exitCode: number;
-  cwd: string;
-}
-
-export interface ReadFileResult {
-  content: string;
-  nextOffset: number;
-  eof: boolean;
-}
-
-export interface WriteFileResult {
-  bytesWritten: number;
-}
-
-export interface ListFilesResult {
-  entries: string;
-  nextCursor: number;
-  eof: boolean;
-}
-
-export type FrameWriter = (wire: Buffer) => void;
+export type { FrameWriter, ListFilesResult, PeerHandlers, ReadFileResult, ShellResult, WriteFileResult };
 
 export class DosPeer {
   private readonly promptChunks = new Map<number, Buffer[]>();
@@ -92,7 +75,7 @@ export class DosPeer {
   }
 
   execute(command: string): Promise<ShellResult> {
-    const payload = Buffer.from(command, "ascii");
+    const payload = buildExecRequest(command);
     if (payload.length === 0 || payload.length > 126) throw new RangeError("DOS command must contain 1 to 126 bytes");
     const sequence = this.allocateSequence();
     return new Promise<ShellResult>((resolve, reject) => {
@@ -102,13 +85,9 @@ export class DosPeer {
   }
 
   readFile(path: string, offset: number, maxBytes: number): Promise<ReadFileResult> {
-    const filePath = encodeDosPath(path);
     if (!Number.isInteger(offset) || offset < 0 || offset > 0x7fffffff) throw new RangeError("offset must be between 0 and 2147483647");
     if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 16384) throw new RangeError("max_bytes must be between 1 and 16384");
-    const payload = Buffer.alloc(6 + filePath.length);
-    payload.writeUInt32LE(offset, 0);
-    payload.writeUInt16LE(maxBytes, 4);
-    filePath.copy(payload, 6);
+    const payload = buildReadFileRequest(path, offset, maxBytes);
     const sequence = this.allocateSequence();
     return new Promise<ReadFileResult>((resolve, reject) => {
       this.fileOperations.add(sequence, "DOS file operation", { kind: "read", chunks: [], resolve, reject });
@@ -120,28 +99,21 @@ export class DosPeer {
     const normalized = toDosAscii(content).replace(/\n/g, "\r\n");
     const bytes = Buffer.from(normalized, "ascii");
     if (bytes.length > 65535) throw new RangeError("text content must not exceed 65535 DOS bytes per call");
-    const filePath = encodeDosPath(path);
     const sequence = this.allocateSequence();
-    const start = Buffer.concat([Buffer.from([mode === "overwrite" ? 1 : 2]), filePath]);
+    const start = buildWriteFileStart(path, mode);
     return new Promise<WriteFileResult>((resolve, reject) => {
       this.fileOperations.add(sequence, "DOS file operation", { kind: "write", resolve, reject });
       this.sendFrame(MessageType.WriteFileStart, sequence, start);
-      for (const chunk of splitPayload(bytes, 512)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
+      for (const chunk of splitPayload(bytes, FILE_CHUNK_BYTES)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
       this.sendFrame(MessageType.WriteFileEnd, sequence, Buffer.alloc(0));
     });
   }
 
   listFiles(path: string, pattern: string, cursor: number, limit: number): Promise<ListFilesResult> {
-    const directory = encodeDosPath(path);
-    const mask = encodeDosPath(pattern);
     if (!Number.isInteger(cursor) || cursor < 0 || cursor > 0xffff) throw new RangeError("cursor must be between 0 and 65535");
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new RangeError("limit must be between 1 and 50");
-    const payload = Buffer.alloc(4 + directory.length + mask.length);
-    payload.writeUInt16LE(cursor, 0);
-    payload[2] = limit;
-    payload[3] = directory.length;
-    directory.copy(payload, 4);
-    mask.copy(payload, 4 + directory.length);
+    const payload = buildListFilesRequest(path, pattern);
+    writeListCursorAndLimit(payload, cursor, limit);
     const sequence = this.allocateSequence();
     return new Promise<ListFilesResult>((resolve, reject) => {
       this.fileOperations.add(sequence, "DOS file operation", { kind: "list", chunks: [], resolve, reject });
@@ -158,7 +130,7 @@ export class DosPeer {
 
   sendStyledAssistant(sequence: number, style: TextStyle, text: string): void {
     const ascii = Buffer.from(toDosAscii(text), "ascii");
-    for (const chunk of splitPayload(ascii, 1023)) {
+    for (const chunk of splitPayload(ascii, STYLED_CHUNK_BYTES)) {
       this.sendFrame(MessageType.StyledAssistantChunk, sequence, Buffer.concat([Buffer.from([style]), chunk]));
     }
   }
@@ -182,7 +154,7 @@ export class DosPeer {
   }
 
   sendError(sequence: number, message: string): void {
-    const payload = Buffer.from(toDosAscii(message).slice(0, 1024), "ascii");
+    const payload = Buffer.from(toDosAscii(message).slice(0, ERROR_MESSAGE_BYTES), "ascii");
     this.sendFrame(MessageType.Error, sequence, payload);
   }
 
