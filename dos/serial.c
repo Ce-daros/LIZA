@@ -48,18 +48,3 @@ int serial_write(const unsigned char *data, unsigned short length)
     }
     return 1;
 }
-
-int serial_connected(void)
-{
-    return (inp(com_base + 6) & 0x80) != 0;
-}
-
-unsigned char serial_line_status(void)
-{
-    return inp(com_base + 5);
-}
-
-unsigned char serial_modem_status(void)
-{
-    return inp(com_base + 6);
-}
