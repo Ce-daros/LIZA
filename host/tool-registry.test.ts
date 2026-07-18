@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { DosSessionPort } from "./agent-driver.js";
-import { ClientMode } from "./protocol.js";
 import { createLizaToolRegistry } from "./tool-registry.js";
+import { inertPort } from "./test-helpers/inert-port.js";
 
 test("completes search and fetch status without re-reading start arguments", () => {
   const registry = createLizaToolRegistry(inertPort());
@@ -53,15 +52,3 @@ test("run_python has no start detail but reports failure on non-zero exit or tim
     "any agent-level error short-circuits to failure",
   );
 });
-
-function inertPort(): DosSessionPort {
-  const unavailable = async () => { throw new Error("unused"); };
-  return {
-    context: { mode: ClientMode.OneShot, cwd: "C:\\" },
-    execute: unavailable,
-    read: unavailable,
-    write: unavailable,
-    list: unavailable,
-    reportToolStatus: () => {},
-  };
-}

@@ -1,9 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { DosSessionPort } from "../host/agent-driver.js";
-import { ClientMode } from "../host/protocol.js";
 import { createLizaToolRegistry } from "../host/tool-registry.js";
+import { inertPort } from "../host/test-helpers/inert-port.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const protocol = JSON.parse(await readFile(path.join(root, "protocol", "schema.json"), "utf8")) as ProtocolSchema;
@@ -40,18 +39,6 @@ function renderMessages(schema: ProtocolSchema): string {
     "| ---: | --- | --- | --- |",
     ...schema.messages.map((message) => `| ${message.value} | \`${message.name}\` | ${message.direction} | ${message.payload} |`),
   ].join("\n");
-}
-
-function inertPort(): DosSessionPort {
-  const unavailable = async () => { throw new Error("Documentation generator cannot execute DOS operations"); };
-  return {
-    context: { mode: ClientMode.OneShot, cwd: "C:\\" },
-    execute: unavailable,
-    read: unavailable,
-    write: unavailable,
-    list: unavailable,
-    reportToolStatus: () => {},
-  };
 }
 
 function escape(value: string): string {
