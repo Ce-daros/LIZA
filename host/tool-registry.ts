@@ -4,6 +4,7 @@ import { createDosShellTool } from "./dos-tool.js";
 import { createFetchUrlTool } from "./fetch-url.js";
 import { createFileTools } from "./file-tools.js";
 import { createPythonTool } from "./python-tool.js";
+import { createTavilyClient } from "./tavily-client.js";
 import { createTavilySearchTool } from "./tavily-search.js";
 import type { ToolPromptEntry } from "./tool-prompt.js";
 
@@ -59,8 +60,9 @@ export function createLizaToolRegistry(port: DosSessionPort): LizaToolRegistry {
   });
   const [readFile, writeFile, listFiles] = createFileTools(port);
   const runPython = createPythonTool();
-  const tavilySearch = createTavilySearchTool();
-  const fetchUrl = createFetchUrlTool();
+  const tavilyClient = createTavilyClient();
+  const tavilySearch = createTavilySearchTool(tavilyClient);
+  const fetchUrl = createFetchUrlTool(tavilyClient);
 
   return new LizaToolRegistry([
     {

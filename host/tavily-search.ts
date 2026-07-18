@@ -1,18 +1,8 @@
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { isTavilyMisconfigured, type TavilyClient } from "./tavily-client.js";
 
-interface TavilyResult {
-  title: string;
-  url: string;
-  content: string;
-}
-
-interface TavilySearchResponse {
-  answer?: string;
-  results: TavilyResult[];
-}
-
-export function createTavilySearchTool() {
+export function createTavilySearchTool(client: TavilyClient) {
   return defineTool({
     name: "tavily_search",
     label: "Search the web",
@@ -23,33 +13,25 @@ export function createTavilySearchTool() {
     }, { additionalProperties: false }),
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
-      const apiKey = process.env.TAVILY_API_KEY;
-      if (!apiKey) throw new Error("TAVILY_API_KEY is not configured");
-
-      const response = await fetch("https://api.tavily.com/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: apiKey,
+      try {
+        const payload = await client.search({
           query: params.query,
-          search_depth: "basic",
-          max_results: params.max_results ?? 5,
-          include_answer: true,
-        }),
-      });
-      if (!response.ok) throw new Error(`Tavily search failed: ${response.status} ${await response.text()}`);
-
-      const payload = await response.json() as TavilySearchResponse;
-      const sections = [
-        `Query: ${params.query}`,
-        ...(payload.answer ? [`Answer:\n${payload.answer}`] : []),
-        "Sources:",
-        ...payload.results.map((result) => `- ${result.title}\n  ${result.url}\n  ${result.content}`),
-      ];
-      return {
-        content: [{ type: "text" as const, text: sections.join("\n") }],
-        details: payload,
-      };
+          maxResults: params.max_results ?? 5,
+        });
+        const sections = [
+          `Query: ${params.query}`,
+          ...(payload.answer ? [`Answer:\n${payload.answer}`] : []),
+          "Sources:",
+          ...payload.results.map((result) => `- ${result.title}\n  ${result.url}\n  ${result.content}`),
+        ];
+        return {
+          content: [{ type: "text" as const, text: sections.join("\n") }],
+          details: payload,
+        };
+      } catch (error) {
+        if (isTavilyMisconfigured(error)) throw new Error("TAVILY_API_KEY is not configured");
+        throw error;
+      }
     },
   });
 }
