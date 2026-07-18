@@ -4,7 +4,7 @@ import { createDosShellTool } from "./dos-tool.js";
 import { createFetchUrlTool } from "./fetch-url.js";
 import { createFileTools } from "./file-tools.js";
 import { createPythonTool } from "./python-tool.js";
-import { createTavilyClient } from "./tavily-client.js";
+import { createTavilyClient, type TavilyClient } from "./tavily-client.js";
 import { createTavilySearchTool } from "./tavily-search.js";
 import type { ToolPromptEntry } from "./tool-prompt.js";
 
@@ -60,9 +60,16 @@ export function createLizaToolRegistry(port: DosSessionPort): LizaToolRegistry {
   });
   const [readFile, writeFile, listFiles] = createFileTools(port);
   const runPython = createPythonTool();
-  const tavilyClient = createTavilyClient();
-  const tavilySearch = createTavilySearchTool(tavilyClient);
-  const fetchUrl = createFetchUrlTool(tavilyClient);
+  // Defer client creation so building the registry (docs generation, tests)
+  // does not require TAVILY_API_KEY; the misconfiguration error surfaces on
+  // the first web call instead, which the tools already handle.
+  let tavilyClient: TavilyClient | undefined;
+  const lazyTavily: TavilyClient = {
+    search: (args) => (tavilyClient ??= createTavilyClient()).search(args),
+    extract: (args) => (tavilyClient ??= createTavilyClient()).extract(args),
+  };
+  const tavilySearch = createTavilySearchTool(lazyTavily);
+  const fetchUrl = createFetchUrlTool(lazyTavily);
 
   return new LizaToolRegistry([
     {
