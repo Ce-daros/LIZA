@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DosPeer, toDosAscii } from "./dos-peer.js";
+import { DosPeer } from "./dos-peer.js";
 import { ClientMode, encodeExitCode, Frame, FrameDecoder, MessageType } from "./protocol.js";
+import { toDosAscii } from "./dos-ascii.js";
 
 function decodeWire(wire: Buffer): Frame {
   const frames = new FrameDecoder().push(wire);
@@ -64,6 +65,22 @@ test("rejects an active command when DOS disconnects", async () => {
   const pending = peer.execute("DIR");
   peer.receive({ type: MessageType.Disconnect, sequence: 9, payload: Buffer.alloc(0) });
   await assert.rejects(pending, /disconnected during command execution/);
+});
+
+test("sendFrame becomes a no-op after close() so callers can omit isConnected guards", async () => {
+  const sent: Frame[] = [];
+  const decoder = new FrameDecoder();
+  const peer = new DosPeer((wire) => { sent.push(...decoder.push(wire)); });
+  peer.setHandlers({
+    onStart: () => {}, onPrompt: () => {}, onCancel: () => {}, onNewSession: () => {}, onDisconnect: () => {},
+  });
+  peer.receive({ type: MessageType.Disconnect, sequence: 0, payload: Buffer.alloc(0) });
+  await peer.whenInboundIdle();
+  peer.sendError(7, "after disconnect");
+  peer.sendComplete(7);
+  peer.sendToolStatus(7, "start", "LABEL");
+  peer.sendAssistant(7, "text");
+  assert.equal(sent.length, 0, "no frames should be emitted after disconnect");
 });
 
 test("chunks long assistant output and routes cancellation", async () => {

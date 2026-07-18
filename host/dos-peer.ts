@@ -1,4 +1,5 @@
 import { ClientMode, decodeExitCode, encodeFrame, Frame, MessageType, splitPayload, TextStyle } from "./protocol.js";
+import { encodeDosPath, toDosAscii } from "./dos-ascii.js";
 import { InboundQueue } from "./inbound-queue.js";
 import { PendingRequests, type PendingRequest } from "./pending-requests.js";
 import type { ToolStatusState } from "./tool-status.js";
@@ -90,60 +91,7 @@ export class DosPeer {
     return this.inbound.idle();
   }
 
-  private processFrame(frame: Frame): void | Promise<void> {
-    if (!this.connected) return;
-    switch (frame.type) {
-      case MessageType.Hello:
-        this.sendFrame(MessageType.HelloAck, frame.sequence, Buffer.from("LIZA-HOST/0.1", "ascii"));
-        return;
-      case MessageType.SessionStart:
-        return this.receiveStart(frame);
-      case MessageType.PromptChunk:
-        this.receivePromptChunk(frame);
-        return;
-      case MessageType.PromptEnd:
-        this.receivePromptEnd(frame);
-        return;
-      case MessageType.ExecResultChunk:
-        this.receiveExecChunk(frame);
-        return;
-      case MessageType.ExecResultEnd:
-        this.receiveExecEnd(frame);
-        return;
-      case MessageType.ReadFileChunk:
-      case MessageType.ListFilesChunk:
-        this.receiveFileChunk(frame);
-        return;
-      case MessageType.ReadFileEnd:
-        this.receiveReadEnd(frame);
-        return;
-      case MessageType.WriteFileResult:
-        this.receiveWriteResult(frame);
-        return;
-      case MessageType.ListFilesEnd:
-        this.receiveListEnd(frame);
-        return;
-      case MessageType.Cancel:
-        this.launchInbound(frame.sequence, () => this.handlers?.onCancel(frame.sequence), false);
-        return;
-      case MessageType.NewSession:
-        this.launchInbound(frame.sequence, () => this.handlers?.onNewSession(frame.sequence), true);
-        return;
-      case MessageType.Disconnect:
-        this.close();
-        return;
-      case MessageType.Ping:
-        this.sendFrame(MessageType.Pong, frame.sequence, Buffer.alloc(0));
-        return;
-      case MessageType.Pong:
-        return;
-      default:
-        this.sendError(frame.sequence, `Unexpected message type ${frame.type}`);
-    }
-  }
-
   execute(command: string): Promise<ShellResult> {
-    if (!this.connected) throw new Error("DOS client is disconnected");
     const payload = Buffer.from(command, "ascii");
     if (payload.length === 0 || payload.length > 126) throw new RangeError("DOS command must contain 1 to 126 bytes");
     const sequence = this.allocateSequence();
@@ -154,7 +102,7 @@ export class DosPeer {
   }
 
   readFile(path: string, offset: number, maxBytes: number): Promise<ReadFileResult> {
-    const filePath = encodePath(path);
+    const filePath = encodeDosPath(path);
     if (!Number.isInteger(offset) || offset < 0 || offset > 0x7fffffff) throw new RangeError("offset must be between 0 and 2147483647");
     if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 16384) throw new RangeError("max_bytes must be between 1 and 16384");
     const payload = Buffer.alloc(6 + filePath.length);
@@ -172,7 +120,7 @@ export class DosPeer {
     const normalized = toDosAscii(content).replace(/\n/g, "\r\n");
     const bytes = Buffer.from(normalized, "ascii");
     if (bytes.length > 65535) throw new RangeError("text content must not exceed 65535 DOS bytes per call");
-    const filePath = encodePath(path);
+    const filePath = encodeDosPath(path);
     const sequence = this.allocateSequence();
     const start = Buffer.concat([Buffer.from([mode === "overwrite" ? 1 : 2]), filePath]);
     return new Promise<WriteFileResult>((resolve, reject) => {
@@ -184,8 +132,8 @@ export class DosPeer {
   }
 
   listFiles(path: string, pattern: string, cursor: number, limit: number): Promise<ListFilesResult> {
-    const directory = encodePath(path);
-    const mask = encodePath(pattern);
+    const directory = encodeDosPath(path);
+    const mask = encodeDosPath(pattern);
     if (!Number.isInteger(cursor) || cursor < 0 || cursor > 0xffff) throw new RangeError("cursor must be between 0 and 65535");
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new RangeError("limit must be between 1 and 50");
     const payload = Buffer.alloc(4 + directory.length + mask.length);
@@ -245,6 +193,58 @@ export class DosPeer {
     this.fileOperations.rejectAll("DOS client disconnected during file operation");
     this.promptChunks.clear();
     this.handlers?.onDisconnect();
+  }
+
+  private async processFrame(frame: Frame): Promise<void> {
+    if (!this.connected) return;
+    switch (frame.type) {
+      case MessageType.Hello:
+        this.sendFrame(MessageType.HelloAck, frame.sequence, Buffer.from("LIZA-HOST/0.1", "ascii"));
+        return;
+      case MessageType.SessionStart:
+        return this.receiveStart(frame);
+      case MessageType.PromptChunk:
+        this.receivePromptChunk(frame);
+        return;
+      case MessageType.PromptEnd:
+        this.receivePromptEnd(frame);
+        return;
+      case MessageType.ExecResultChunk:
+        this.receiveExecChunk(frame);
+        return;
+      case MessageType.ExecResultEnd:
+        this.receiveExecEnd(frame);
+        return;
+      case MessageType.ReadFileChunk:
+      case MessageType.ListFilesChunk:
+        this.receiveFileChunk(frame);
+        return;
+      case MessageType.ReadFileEnd:
+        this.receiveReadEnd(frame);
+        return;
+      case MessageType.WriteFileResult:
+        this.receiveWriteResult(frame);
+        return;
+      case MessageType.ListFilesEnd:
+        this.receiveListEnd(frame);
+        return;
+      case MessageType.Cancel:
+        this.launchInbound(frame.sequence, () => this.handlers?.onCancel(frame.sequence), false);
+        return;
+      case MessageType.NewSession:
+        this.launchInbound(frame.sequence, () => this.handlers?.onNewSession(frame.sequence), true);
+        return;
+      case MessageType.Disconnect:
+        this.close();
+        return;
+      case MessageType.Ping:
+        this.sendFrame(MessageType.Pong, frame.sequence, Buffer.alloc(0));
+        return;
+      case MessageType.Pong:
+        return;
+      default:
+        this.sendError(frame.sequence, `Unexpected message type ${frame.type}`);
+    }
   }
 
   private async receiveStart(frame: Frame): Promise<void> {
@@ -376,7 +376,7 @@ export class DosPeer {
   }
 
   private sendFrame(type: MessageType, sequence: number, payload: Buffer): void {
-    if (!this.connected) throw new Error("DOS client is disconnected");
+    if (!this.connected) return;
     this.write(encodeFrame({ type, sequence, payload }));
   }
 
@@ -397,41 +397,4 @@ export class DosPeer {
     this.sendError(sequence, error instanceof Error ? error.message : String(error));
     if (complete) this.sendComplete(sequence);
   }
-}
-
-export function toDosAscii(text: string): string {
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/[\u00a0\u2010-\u2015\u2018\u2019\u201c\u201d\u2022\u2026\u2190-\u2194\u2212]/g, (character) => {
-      const replacements: Record<string, string> = {
-        "\u00a0": " ",
-        "\u2010": "-",
-        "\u2011": "-",
-        "\u2012": "-",
-        "\u2013": "-",
-        "\u2014": "-",
-        "\u2015": "-",
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u201c": "\"",
-        "\u201d": "\"",
-        "\u2022": "*",
-        "\u2026": "...",
-        "\u2190": "<-",
-        "\u2191": "^",
-        "\u2192": "->",
-        "\u2193": "v",
-        "\u2194": "<->",
-        "\u2212": "-",
-      };
-      return replacements[character]!;
-    })
-    .replace(/[^\x09\x0a\x20-\x7e]/g, "");
-}
-
-function encodePath(path: string): Buffer {
-  const encoded = Buffer.from(toDosAscii(path), "ascii");
-  if (encoded.length < 1 || encoded.length > 67) throw new RangeError("DOS path must contain 1 to 67 bytes");
-  return encoded;
 }

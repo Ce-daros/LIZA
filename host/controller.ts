@@ -68,12 +68,12 @@ export class LizaController {
       await this.agent.run(prompt, (text) => renderer.feed(text));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (peer.isConnected) peer.sendError(sequence, message);
+      peer.sendError(sequence, message);
       console.error(`[agent] ${message}`);
     } finally {
       renderer.finish();
       this.renderer = undefined;
-      if (peer.isConnected) peer.sendComplete(sequence);
+      peer.sendComplete(sequence);
       this.running = false;
       this.activeSequence = undefined;
     }
@@ -143,7 +143,7 @@ export class LizaController {
         return peer.listFiles(path, pattern, cursor, limit);
       },
       reportToolStatus: (state, label, detail) => {
-        if (this.activeSequence !== undefined && peer.isConnected)
+        if (this.activeSequence !== undefined)
           peer.sendToolStatus(this.activeSequence, state, label, detail);
       },
     };
