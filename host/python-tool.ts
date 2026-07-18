@@ -50,8 +50,6 @@ async function runPython(python: string, script: string, cwd: string, timeoutMs:
       cwd,
       timeout: timeoutMs,
       reject: false,
-      killSignal: "SIGKILL",
-      forceKillAfterDelay: 500,
       windowsHide: true,
       all: false,
       env: {
