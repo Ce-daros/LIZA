@@ -22,7 +22,7 @@ async function invoke(tool: ReturnType<typeof createDosShellTool>, command: stri
 
 test("dos_shell renders command, cwd before/after, exit code, and complete flag", async () => {
   const { execute, calls } = stubExecute({
-    "DIR *.TXT": { output: "NOTES.TXT 18432\r\n", exitCode: 0, cwd: "C:\\DOS", cwdBefore: "C:\\" },
+    "DIR *.TXT": { output: "NOTES.TXT 18432\r\n", exitCode: 0, cwd: "C:\\DOS", cwdBefore: "C:\\", complete: true },
   });
   const tool = createDosShellTool(execute);
 
@@ -38,7 +38,7 @@ test("dos_shell renders command, cwd before/after, exit code, and complete flag"
 
 test("dos_shell reports non-zero exit codes verbatim", async () => {
   const { execute } = stubExecute({
-    "*": { output: "File not found\r\n", exitCode: 2, cwd: "C:\\", cwdBefore: "C:\\" },
+    "*": { output: "File not found\r\n", exitCode: 2, cwd: "C:\\", cwdBefore: "C:\\", complete: true },
   });
   const tool = createDosShellTool(execute);
 
@@ -48,9 +48,19 @@ test("dos_shell reports non-zero exit codes verbatim", async () => {
   assert.match(text, /\nOutput:\nFile not found\r\n$/);
 });
 
+test("dos_shell renders Output complete: no when the guest reports truncation", async () => {
+  const { execute } = stubExecute({
+    "*": { output: "partial", exitCode: 0, cwd: "C:\\", cwdBefore: "C:\\", complete: false },
+  });
+  const tool = createDosShellTool(execute);
+
+  const text = await invoke(tool, "DIR");
+  assert.match(text, /^Output complete: no$/m);
+});
+
 test("dos_shell omits output section when the captured output is empty", async () => {
   const { execute } = stubExecute({
-    "*": { output: "", exitCode: 0, cwd: "C:\\", cwdBefore: "C:\\" },
+    "*": { output: "", exitCode: 0, cwd: "C:\\", cwdBefore: "C:\\", complete: true },
   });
   const tool = createDosShellTool(execute);
 

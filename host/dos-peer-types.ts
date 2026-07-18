@@ -13,6 +13,7 @@ export interface ShellResult {
   output: string;
   exitCode: number;
   cwd: string;
+  complete: boolean;
 }
 
 export interface ReadFileResult {

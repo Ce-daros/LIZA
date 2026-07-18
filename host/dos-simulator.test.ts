@@ -174,7 +174,7 @@ test("exec result: DOS-emitted chunks and ending resolve peer.execute() with exi
   const peer = bindHostPeer(simulator);
   const pending = peer.execute("DIR");
   sendFramesTo(simulator, peer, simulator.sendExecResult(1, [Buffer.from("ONE\r\n"), Buffer.from("TWO\r\n")], 0, "C:\\DOS"));
-  assert.deepEqual(await pending, { output: "ONE\r\nTWO\r\n", exitCode: 0, cwd: "C:\\DOS" });
+  assert.deepEqual(await pending, { output: "ONE\r\nTWO\r\n", exitCode: 0, cwd: "C:\\DOS", complete: true });
 });
 
 test("exec result: signed exit codes (e.g. -1) round-trip correctly", async () => {
@@ -185,6 +185,7 @@ test("exec result: signed exit codes (e.g. -1) round-trip correctly", async () =
   const result = await pending;
   assert.equal(result.exitCode, -1);
   assert.equal(result.cwd, "C:\\");
+  assert.equal(result.complete, true);
 });
 
 test("read result: 7-byte ending resolves peer.readFile() with status, offset, and EOF", async () => {

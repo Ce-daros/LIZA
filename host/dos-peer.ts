@@ -258,7 +258,9 @@ export class DosPeer {
       this.sendError(frame.sequence, "No matching DOS command");
       return;
     }
-    const cwd = frame.payload.subarray(2).toString("ascii");
+    const hasFlag = frame.payload.length >= 3 && (frame.payload[2] === 0 || frame.payload[2] === 1);
+    const cwdStart = hasFlag ? 3 : 2;
+    const cwd = frame.payload.subarray(cwdStart).toString("ascii");
     if (cwd.length === 0) {
       pending.reject(new Error("DOS command result did not include a working directory"));
       return;
@@ -267,6 +269,7 @@ export class DosPeer {
       output: Buffer.concat(pending.chunks).toString("ascii"),
       exitCode: decodeExitCode(frame.payload),
       cwd,
+      complete: hasFlag ? frame.payload[2] !== 0 : true,
     });
   }
 

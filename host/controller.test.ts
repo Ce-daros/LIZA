@@ -67,7 +67,7 @@ test("flushes streamed text before displaying a shell tool call", async () => {
       peer.receive({
         type: MessageType.ExecResultEnd,
         sequence: frame.sequence,
-        payload: Buffer.concat([encodeExitCode(0), Buffer.from("C:\\")]),
+        payload: Buffer.concat([encodeExitCode(0), Buffer.from([1]), Buffer.from("C:\\")]),
       });
     }
   });

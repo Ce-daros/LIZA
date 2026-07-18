@@ -28,7 +28,7 @@ export function createDosShellTool(executeCommand: (command: string) => Promise<
             `Working directory before: ${result.cwdBefore}`,
             `Working directory after: ${result.cwd}`,
             `Exit code: ${result.exitCode}`,
-            "Output complete: yes",
+            `Output complete: ${result.complete ? "yes" : "no"}`,
             "Output:",
             result.output,
           ].join("\n"),

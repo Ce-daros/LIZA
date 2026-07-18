@@ -19,7 +19,7 @@
     { "name": "ASSISTANT_CHUNK", "value": 9, "direction": "host to DOS", "payload": "streamed answer bytes" },
     { "name": "EXEC_REQUEST", "value": 10, "direction": "host to DOS", "payload": "one DOS command, maximum 126 bytes" },
     { "name": "EXEC_RESULT_CHUNK", "value": 11, "direction": "DOS to host", "payload": "captured stdout/stderr bytes" },
-    { "name": "EXEC_RESULT_END", "value": 12, "direction": "DOS to host", "payload": "signed 16-bit exit code followed by current DOS directory" },
+    { "name": "EXEC_RESULT_END", "value": 12, "direction": "DOS to host", "payload": "signed 16-bit exit code, completeness flag, and current DOS directory" },
     { "name": "COMPLETE", "value": 13, "direction": "host to DOS", "payload": "empty" },
     { "name": "CANCEL", "value": 14, "direction": "DOS to host", "payload": "empty; prompt sequence" },
     { "name": "NEW_SESSION", "value": 15, "direction": "DOS to host", "payload": "empty" },

@@ -36,7 +36,7 @@ belonging to that operation use the same sequence.
 | 9 | `ASSISTANT_CHUNK` | host to DOS | streamed answer bytes |
 | 10 | `EXEC_REQUEST` | host to DOS | one DOS command, maximum 126 bytes |
 | 11 | `EXEC_RESULT_CHUNK` | DOS to host | captured stdout/stderr bytes |
-| 12 | `EXEC_RESULT_END` | DOS to host | signed 16-bit exit code followed by current DOS directory |
+| 12 | `EXEC_RESULT_END` | DOS to host | signed 16-bit exit code, completeness flag, and current DOS directory |
 | 13 | `COMPLETE` | host to DOS | empty |
 | 14 | `CANCEL` | DOS to host | empty; prompt sequence |
 | 15 | `NEW_SESSION` | DOS to host | empty |

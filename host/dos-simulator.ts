@@ -21,6 +21,7 @@ export interface ParsedExecResult {
   chunks: string[];
   exitCode: number;
   cwd: string;
+  complete: boolean;
 }
 
 export interface ParsedReadResult {
@@ -131,7 +132,7 @@ export class LizaDosSimulator {
     return frames;
   }
 
-  sendExecResult(sequence: number, chunks: Buffer[], exitCode: number, cwd: string): Buffer[] {
+  sendExecResult(sequence: number, chunks: Buffer[], exitCode: number, cwd: string, complete = true): Buffer[] {
     const frames: Buffer[] = [];
     for (const chunk of chunks) {
       frames.push(encodeFrame({ type: MessageType.ExecResultChunk, sequence, payload: chunk }));
@@ -139,7 +140,7 @@ export class LizaDosSimulator {
     frames.push(encodeFrame({
       type: MessageType.ExecResultEnd,
       sequence,
-      payload: Buffer.concat([encodeExitCode(exitCode), Buffer.from(cwd, "ascii")]),
+      payload: Buffer.concat([encodeExitCode(exitCode), Buffer.from([complete ? 1 : 0]), Buffer.from(cwd, "ascii")]),
     }));
     return frames;
   }
@@ -193,15 +194,16 @@ export class LizaDosSimulator {
         return;
       }
       case MessageType.ExecResultEnd: {
-        if (frame.payload.length < 2) {
+        if (frame.payload.length < 3) {
           this.errors.push({ sequence: frame.sequence, message: "short exec result payload" });
           return;
         }
         const chunks = this.pendingExec.get(frame.sequence) ?? [];
         this.pendingExec.delete(frame.sequence);
         const exitCode = frame.payload.readInt16LE(0);
-        const cwd = frame.payload.subarray(2).toString("ascii");
-        this.execResults.push({ sequence: frame.sequence, chunks, exitCode, cwd });
+        const complete = frame.payload[2] !== 0;
+        const cwd = frame.payload.subarray(3).toString("ascii");
+        this.execResults.push({ sequence: frame.sequence, chunks, exitCode, cwd, complete });
         return;
       }
       case MessageType.ReadFileChunk: {

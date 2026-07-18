@@ -52,11 +52,11 @@ test("streams a DOS command result back to one pending execution", async () => {
     peer.receive({
       type: MessageType.ExecResultEnd,
       sequence: request.sequence,
-      payload: Buffer.concat([encodeExitCode(0), Buffer.from("C:\\DOS")]),
+      payload: Buffer.concat([encodeExitCode(0), Buffer.from([1]), Buffer.from("C:\\DOS")]),
     });
   });
 
-  assert.deepEqual(await peer.execute("DIR"), { output: "ONE\r\nTWO\r\n", exitCode: 0, cwd: "C:\\DOS" });
+  assert.deepEqual(await peer.execute("DIR"), { output: "ONE\r\nTWO\r\n", exitCode: 0, cwd: "C:\\DOS", complete: true });
   assert.throws(() => peer.execute("X".repeat(127)), /1 to 126/);
 });
 
@@ -207,6 +207,32 @@ test("returns a paginated DOS directory listing", async () => {
 test("rejects a pending command when the guest stops responding", async () => {
   const peer = new DosPeer(() => {}, 50);
   await assert.rejects(peer.execute("DIR"), /DOS command timed out after 50 ms/);
+});
+
+test("propagates the DOS completeness flag as part of the resolved shell result", async () => {
+  let peer: DosPeer;
+  peer = new DosPeer((wire) => {
+    const request = decodeWire(wire);
+    peer.receive({
+      type: MessageType.ExecResultEnd,
+      sequence: request.sequence,
+      payload: Buffer.concat([encodeExitCode(0), Buffer.from([0]), Buffer.from("C:\\")]),
+    });
+  });
+  assert.equal((await peer.execute("DIR")).complete, false);
+});
+
+test("treats a 2-byte legacy EXEC_RESULT_END as complete", async () => {
+  let peer: DosPeer;
+  peer = new DosPeer((wire) => {
+    const request = decodeWire(wire);
+    peer.receive({
+      type: MessageType.ExecResultEnd,
+      sequence: request.sequence,
+      payload: Buffer.concat([encodeExitCode(0), Buffer.from("C:\\")]),
+    });
+  });
+  assert.deepEqual(await peer.execute("DIR"), { output: "", exitCode: 0, cwd: "C:\\", complete: true });
 });
 
 test("rejects a pending file operation when the guest stops responding", async () => {
