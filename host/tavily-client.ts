@@ -4,6 +4,9 @@ import pRetry, { AbortError } from "p-retry";
 export interface TavilySearchArgs {
   query: string;
   maxResults: number;
+  topic?: "general" | "news" | "finance";
+  timeRange?: "year" | "month" | "week" | "day" | "y" | "m" | "w" | "d";
+  includeRawContent?: false | "markdown" | "text";
 }
 
 export interface TavilyExtractArgs {
@@ -58,6 +61,9 @@ async function invokeSearch(tvly: ReturnType<typeof tavily>, args: TavilySearchA
       searchDepth: "basic",
       maxResults: args.maxResults,
       includeAnswer: true,
+      topic: args.topic,
+      timeRange: args.timeRange,
+      includeRawContent: args.includeRawContent,
     });
     return {
       answer: response.answer,
@@ -127,4 +133,4 @@ export function isTavilyMisconfigured(error: unknown): error is TavilyMisconfigu
   return error instanceof TavilyMisconfiguredError;
 }
 
-export { AbortError };
+export { AbortError, mapTavilyError };

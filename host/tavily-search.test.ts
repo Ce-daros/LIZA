@@ -29,7 +29,7 @@ test("forwards query and max_results to the client and formats answer + sources"
     }),
   });
   const result = await invokeSearch(client, { query: "space news", max_results: 3 });
-  assert.deepEqual(calls[0]?.search, { query: "space news", maxResults: 3 });
+  assert.deepEqual(calls[0]?.search, { query: "space news", maxResults: 3, topic: undefined, timeRange: undefined, includeRawContent: undefined });
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   assert.match(text, /Query: space news/);
   assert.match(text, /Answer:\nThe answer\./);
