@@ -111,7 +111,6 @@ export class PiDriver implements AgentDriver {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPromptOverride: () => buildLizaSystemPrompt(this.requirePort().context, toolRegistry.promptEntries),
       appendSystemPromptOverride: () => [],
       extensionFactories: [{
         name: "liza-dos-context",
