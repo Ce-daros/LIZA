@@ -33,7 +33,11 @@ async function main(): Promise<void> {
   }
 
   const transport = serialPath
-    ? new SerialConnector({ path: serialPath, baudRate })
+    ? new SerialConnector({
+        path: serialPath,
+        baudRate,
+        reconnectDelayMs: numberFromEnv("LIZA_SERIAL_RECONNECT_MS"),
+      })
     : new PipeServer(pipePath);
 
   transport.start(attachEndpoint);
@@ -53,3 +57,13 @@ main().catch((error) => {
   console.error(`[host] fatal: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
   process.exit(1);
 });
+
+function numberFromEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${name} must be a non-negative number, got ${raw}`);
+  }
+  return parsed;
+}
