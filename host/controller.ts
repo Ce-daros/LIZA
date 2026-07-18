@@ -33,30 +33,40 @@ export class LizaController {
   }
 
   private async onPrompt(peer: DosPeer, sequence: number, prompt: string): Promise<void> {
-    let commandResult: string | undefined;
-    try {
-      commandResult = await this.handleCommand(prompt);
-    } catch (error) {
-      peer.sendError(sequence, error instanceof Error ? error.message : String(error));
-      peer.sendComplete(sequence);
-      return;
-    }
+    const commandResult = await this.tryHandleSlashCommand(prompt);
     if (commandResult !== undefined) {
-      peer.sendAssistant(sequence, commandResult);
-      peer.sendComplete(sequence);
+      this.respond(peer, sequence, commandResult);
       return;
     }
     if (this.running) {
-      peer.sendError(sequence, "LIZA is already processing a request");
-      peer.sendComplete(sequence);
+      this.respond(peer, sequence, "LIZA is already processing a request", true);
       return;
     }
     if (prompt.trim().length === 0) {
-      peer.sendError(sequence, "Prompt is empty");
-      peer.sendComplete(sequence);
+      this.respond(peer, sequence, "Prompt is empty", true);
       return;
     }
+    await this.runAgentTurn(peer, sequence, prompt);
+  }
 
+  private async tryHandleSlashCommand(prompt: string): Promise<string | undefined> {
+    const [command, argument] = splitCommand(prompt);
+    if (command === "/status") {
+      if (argument.length !== 0) return "Usage: /status\n";
+      return formatStatus(this.agent.getStatus());
+    }
+    if (command === "/model") {
+      if (argument.length === 0) return formatModels(this.agent.getStatus());
+      return formatStatus(await this.agent.setModel(argument.toLowerCase()));
+    }
+    if (command === "/effort") {
+      if (argument.length === 0) return formatEfforts(this.agent.getStatus());
+      return formatStatus(this.agent.setEffort(argument.toLowerCase()));
+    }
+    return undefined;
+  }
+
+  private async runAgentTurn(peer: DosPeer, sequence: number, prompt: string): Promise<void> {
     this.running = true;
     this.activeSequence = sequence;
     console.log(`[user] ${prompt}`);
@@ -79,21 +89,10 @@ export class LizaController {
     }
   }
 
-  private async handleCommand(prompt: string): Promise<string | undefined> {
-    const [command, argument] = splitCommand(prompt);
-    if (command === "/status") {
-      if (argument.length !== 0) return "Usage: /status\n";
-      return formatStatus(this.agent.getStatus());
-    }
-    if (command === "/model") {
-      if (argument.length === 0) return formatModels(this.agent.getStatus());
-      return formatStatus(await this.agent.setModel(argument.toLowerCase()));
-    }
-    if (command === "/effort") {
-      if (argument.length === 0) return formatEfforts(this.agent.getStatus());
-      return formatStatus(this.agent.setEffort(argument.toLowerCase()));
-    }
-    return undefined;
+  private respond(peer: DosPeer, sequence: number, text: string, isError = false): void {
+    if (isError) peer.sendError(sequence, text);
+    else peer.sendAssistant(sequence, text);
+    peer.sendComplete(sequence);
   }
 
   private async onCancel(peer: DosPeer, sequence: number): Promise<void> {
@@ -104,8 +103,7 @@ export class LizaController {
 
   private async onNewSession(peer: DosPeer, sequence: number): Promise<void> {
     if (this.running) {
-      peer.sendError(sequence, "Cannot start a new session while LIZA is working");
-      peer.sendComplete(sequence);
+      this.respond(peer, sequence, "Cannot start a new session while LIZA is working", true);
       return;
     }
     await this.agent.newSession();
@@ -124,22 +122,23 @@ export class LizaController {
   }
 
   private createSessionPort(peer: DosPeer, context: DosSessionPort["context"]): DosSessionPort {
+    const flushBeforeToolCall = () => this.renderer?.finish();
     return {
       context,
       execute: (command) => {
-        this.flushAssistantText();
+        flushBeforeToolCall();
         return peer.execute(command);
       },
       read: (path, offset, maxBytes) => {
-        this.flushAssistantText();
+        flushBeforeToolCall();
         return peer.readFile(path, offset, maxBytes);
       },
       write: (path, content, mode) => {
-        this.flushAssistantText();
+        flushBeforeToolCall();
         return peer.writeFile(path, content, mode);
       },
       list: (path, pattern, cursor, limit) => {
-        this.flushAssistantText();
+        flushBeforeToolCall();
         return peer.listFiles(path, pattern, cursor, limit);
       },
       reportToolStatus: (state, label, detail) => {
@@ -147,11 +146,6 @@ export class LizaController {
           peer.sendToolStatus(this.activeSequence, state, label, detail);
       },
     };
-  }
-
-  private flushAssistantText(): void {
-    if (!this.renderer) throw new Error("Assistant renderer is not active");
-    this.renderer.finish();
   }
 }
 
