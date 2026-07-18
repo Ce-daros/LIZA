@@ -174,7 +174,6 @@ static int write_capture(const char *message, int result)
 static int execute_state_command(char *command)
 {
     char *argument;
-    char *environment;
     int drive;
 
     if (same_word(command, "CD") || same_word(command, "CHDIR")) {
@@ -196,13 +195,13 @@ static int execute_state_command(char *command)
     }
 
     if (same_word(command, "SET")) {
+        static char env_line[256];
         argument = skip_spaces(command + 3);
         if (*argument == '\0') return -1;
-        environment = malloc(strlen(argument) + 1);
-        if (environment == NULL) return write_capture("Not enough memory.\r\n", 1);
-        strcpy(environment, argument);
-        if (putenv(environment) == 0) return write_capture("", 0);
-        free(environment);
+        if (strlen(argument) >= sizeof(env_line))
+            return write_capture("Environment assignment is too long.\r\n", 1);
+        strcpy(env_line, argument);
+        if (putenv(env_line) == 0) return write_capture("", 0);
         return write_capture("Unable to set environment variable.\r\n", 1);
     }
 
@@ -256,7 +255,7 @@ static int return_command_result(unsigned short sequence, char *command)
 {
     FILE *file;
     unsigned char buffer[512];
-    unsigned char ending[70];
+    unsigned char ending[71];
     char cwd[67];
     unsigned short count;
     int result;
@@ -278,10 +277,11 @@ static int return_command_result(unsigned short sequence, char *command)
     remove(CAPTURE_FILE);
     ending[0] = result & 0xff;
     ending[1] = (result >> 8) & 0xff;
+    ending[2] = 1;
     if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
     count = (unsigned short)strlen(cwd);
-    memcpy(ending + 2, cwd, count);
-    return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 2);
+    memcpy(ending + 3, cwd, count);
+    return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 3);
 }
 
 static unsigned long read_u32(const unsigned char *data)
