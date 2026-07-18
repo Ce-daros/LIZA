@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { execa, ExecaError } from "execa";
 
 const MAX_OUTPUT_CHARS = 12000;
 
@@ -44,11 +44,16 @@ export function createPythonTool(python = process.env.LIZA_PYTHON ?? "python") {
   });
 }
 
-function runPython(python: string, script: string, cwd: string, timeoutMs: number): Promise<PythonResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(python, ["-I", script], {
+async function runPython(python: string, script: string, cwd: string, timeoutMs: number): Promise<PythonResult> {
+  try {
+    const result = await execa(python, ["-I", script], {
       cwd,
+      timeout: timeoutMs,
+      reject: false,
+      killSignal: "SIGKILL",
+      forceKillAfterDelay: 500,
       windowsHide: true,
+      all: false,
       env: {
         SystemRoot: process.env.SystemRoot ?? "",
         PATH: process.env.PATH ?? "",
@@ -58,27 +63,20 @@ function runPython(python: string, script: string, cwd: string, timeoutMs: numbe
         PYTHONUTF8: "1",
         MPLBACKEND: "Agg",
       },
+      extendEnv: false,
     });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, timeoutMs);
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(new Error(`Failed to start the Python interpreter '${python}': ${error.message}`));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, exitCode: code, timedOut });
-    });
-  });
+    return {
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? "",
+      exitCode: result.exitCode ?? null,
+      timedOut: result.timedOut,
+    };
+  } catch (error) {
+    if (error instanceof ExecaError && error.shortMessage) {
+      throw new Error(`Failed to start the Python interpreter '${python}': ${error.shortMessage}`);
+    }
+    throw error;
+  }
 }
 
 function formatResult(result: PythonResult, timeoutSeconds: number): string {
