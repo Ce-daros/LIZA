@@ -82,10 +82,10 @@ C:\>LIZA
 With no arguments, LIZA stays in a scrolling interactive session. `/EXIT`
 returns to DOS, `/NEW` starts a new conversation, `/THEME` reapplies the default
 theme, `/MODEL` displays the aliases `mimo` and `ds`; use `/MODEL mimo` or
-`/MODEL ds` (also `/MODEL deepseek`) to select one. `/EFFORT` displays or
-sets the active model's reasoning level (`off` or `high` for MiMo; `off`,
-`high`, or `xhigh` for DeepSeek), `/STATUS` displays the active model and
-effort, and Esc cancels the active model turn. Successful command output is
+`/MODEL ds` to select one. `/EFFORT` displays or sets the active model's
+reasoning level (`off` or `high` for MiMo; `off`, `high`, or `xhigh` for
+DeepSeek), `/STATUS` displays the active model and effort, and Esc cancels
+the active model turn. Successful command output is
 captured for Pi and remains hidden. `CD`, drive changes, and `SET` persist until
 that particular `LIZA.EXE` process exits.
 
