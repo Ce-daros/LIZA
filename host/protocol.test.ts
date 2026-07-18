@@ -36,6 +36,31 @@ test("resynchronizes after garbage, an invalid length, and a bad CRC", () => {
   assert.equal(frames[0]?.payload.toString(), "hello");
 });
 
+test("keeps last byte if it matches SYNC[0] when no sync found", () => {
+  const decoder = new FrameDecoder();
+  const partial = Buffer.from([0x4c]);
+  const frames = decoder.push(partial);
+  assert.equal(frames.length, 0);
+  assert.equal(decoder["buffer"].length, 1);
+  assert.equal(decoder["buffer"][0], 0x4c);
+});
+
+test("discards buffer when last byte is not SYNC[0]", () => {
+  const decoder = new FrameDecoder();
+  const garbage = Buffer.from([0x00, 0x01, 0x02]);
+  const frames = decoder.push(garbage);
+  assert.equal(frames.length, 0);
+  assert.equal(decoder["buffer"].length, 0);
+});
+
+test("keeps last byte as potential sync when byte matches SYNC[0] but buffer too short for header", () => {
+  const decoder = new FrameDecoder();
+  const partial = Buffer.from([0x4c, 0x5a, 0x01]);
+  const frames = decoder.push(partial);
+  assert.equal(frames.length, 0);
+  assert.equal(decoder["buffer"].length, 3);
+});
+
 test("splits long logical payloads without empty trailing chunks", () => {
   const chunks = splitPayload(Buffer.alloc(2500, 0x41), 1000);
   assert.deepEqual(chunks.map((chunk) => chunk.length), [1000, 1000, 500]);

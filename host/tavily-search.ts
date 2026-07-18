@@ -10,6 +10,9 @@ export function createTavilySearchTool(client: TavilyClient) {
     parameters: Type.Object({
       query: Type.String({ minLength: 1, maxLength: 400 }),
       max_results: Type.Optional(Type.Integer({ minimum: 1, maximum: 10, default: 5 })),
+      topic: Type.Optional(Type.Union([Type.Literal("general"), Type.Literal("news"), Type.Literal("finance")])),
+      time_range: Type.Optional(Type.Union([Type.Literal("year"), Type.Literal("month"), Type.Literal("week"), Type.Literal("day"), Type.Literal("y"), Type.Literal("m"), Type.Literal("w"), Type.Literal("d")])),
+      include_raw_content: Type.Optional(Type.Union([Type.Literal(false), Type.Literal("markdown"), Type.Literal("text")])),
     }, { additionalProperties: false }),
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
@@ -17,6 +20,9 @@ export function createTavilySearchTool(client: TavilyClient) {
         const payload = await client.search({
           query: params.query,
           maxResults: params.max_results ?? 5,
+          topic: params.topic,
+          timeRange: params.time_range,
+          includeRawContent: params.include_raw_content,
         });
         const sections = [
           `Query: ${params.query}`,
