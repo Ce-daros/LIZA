@@ -11,8 +11,8 @@ default); the wire format is specified in `protocol/PROTOCOL.md`.
 - `host/` — TypeScript host (Node ESM, strict).
   - Model tools (each registered in `host/tool-registry.ts`): `dos-tool.ts`,
     `file-tools.ts`, `python-tool.ts`, `tavily-search.ts`, `fetch-url.ts`.
-    `dos-tool.ts` has no dedicated test (its formatting contract is exercised
-    end-to-end through `controller.test.ts`).
+    `dos-tool.ts` is covered by its own tests in `host/dos-tool.test.ts`; the
+    end-to-end wire format is exercised through `controller.test.ts`.
   - Protocol / transport: `controller.ts`, `dos-peer.ts`, `dos-ascii.ts`,
     `protocol.ts`, `dos-simulator.ts` (test-only DOS-end simulator).
   - Coordination primitives: `inbound-queue.ts`, `pending-requests.ts`.
