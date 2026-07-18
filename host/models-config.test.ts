@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { loadLizaModels } from "./models-config.js";
+
+function writeConfig(content: object): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "liza-models-"));
+  const file = path.join(dir, "models.json");
+  writeFileSync(file, JSON.stringify(content), "utf8");
+  return file;
+}
+
+test("loads aliased models with default from explicit marker", () => {
+  const file = writeConfig({
+    providers: {
+      mimo: { models: [{ id: "mimo-v2.5-pro", alias: "mimo", default: true, name: "MiMo" }] },
+      openrouter: { models: [{ id: "deepseek/deepseek-v4-pro", alias: "ds", name: "DeepSeek" }] },
+    },
+  });
+  const result = loadLizaModels(file);
+  assert.equal(result.models.length, 2);
+  assert.deepEqual(result.models.map((m) => m.alias), ["mimo", "ds"]);
+  assert.equal(result.defaultModel.alias, "mimo");
+  assert.equal(result.defaultModel.provider, "mimo");
+  assert.equal(result.defaultModel.id, "mimo-v2.5-pro");
+  rmSync(path.dirname(file), { recursive: true });
+});
+
+test("falls back to the first aliased model when no default marker is present", () => {
+  const file = writeConfig({
+    providers: {
+      openrouter: { models: [{ id: "x/y", alias: "first", name: "First" }] },
+      mimo: { models: [{ id: "z", alias: "second", name: "Second" }] },
+    },
+  });
+  const result = loadLizaModels(file);
+  assert.equal(result.defaultModel.alias, "first");
+  rmSync(path.dirname(file), { recursive: true });
+});
+
+test("ignores models without an alias field", () => {
+  const file = writeConfig({
+    providers: {
+      mimo: {
+        models: [
+          { id: "mimo-v2.5-pro", alias: "mimo", name: "MiMo" },
+          { id: "internal-only", name: "NoAlias" },
+        ],
+      },
+    },
+  });
+  const result = loadLizaModels(file);
+  assert.equal(result.models.length, 1);
+  assert.equal(result.models[0]?.alias, "mimo");
+  rmSync(path.dirname(file), { recursive: true });
+});
+
+test("throws when no aliased models are configured", () => {
+  const file = writeConfig({
+    providers: { mimo: { models: [{ id: "x", name: "X" }] } },
+  });
+  assert.throws(() => loadLizaModels(file), /No aliased models/);
+  rmSync(path.dirname(file), { recursive: true });
+});

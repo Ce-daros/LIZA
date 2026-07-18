@@ -9,12 +9,15 @@ import {
   type AgentSession,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
+import { loadLizaModels, type LizaModel } from "./models-config.js";
 import { buildLizaSystemPrompt } from "./system-prompt.js";
 import { createLizaToolRegistry } from "./tool-registry.js";
 
 export class PiDriver implements AgentDriver {
   private session: AgentSession | undefined;
   private modelRegistry: ModelRegistry | undefined;
+  private lizaModels: LizaModel[] = [];
+  private defaultModel: LizaModel | undefined;
   private unsubscribe: (() => void) | undefined;
   private textSink: ((text: string) => void) | undefined;
   private port: DosSessionPort | undefined;
@@ -43,19 +46,20 @@ export class PiDriver implements AgentDriver {
 
   getStatus(): AgentStatus {
     const session = this.requireSession();
+    const alias = this.aliasForModel(session.model!.provider, session.model!.id);
     return {
-      model: modelAlias(session.model!.provider, session.model!.id),
+      model: alias,
       effort: session.thinkingLevel,
-      availableModels: ["mimo", "ds"],
+      availableModels: this.lizaModels.map((m) => m.alias),
       availableEfforts: session.getAvailableThinkingLevels(),
     };
   }
 
-  async setModel(modelId: string): Promise<AgentStatus> {
-    const selection = modelSelection(modelId);
-    if (!selection) throw new RangeError(`Unknown model: ${modelId}`);
-    const model = this.modelRegistry!.find(selection.provider, selection.id);
-    if (!model) throw new Error(`Configured model is unavailable: ${modelId}`);
+  async setModel(alias: string): Promise<AgentStatus> {
+    const target = this.lizaModels.find((m) => m.alias === alias);
+    if (!target) throw new RangeError(`Unknown model: ${alias}`);
+    const model = this.modelRegistry!.find(target.provider, target.id);
+    if (!model) throw new Error(`Configured model is unavailable: ${alias}`);
     await this.requireSession().setModel(model);
     return this.getStatus();
   }
@@ -98,9 +102,13 @@ export class PiDriver implements AgentDriver {
     const modelRegistry = ModelRegistry.create(authStorage, this.modelsPath);
     const modelError = modelRegistry.getError();
     if (modelError) throw new Error(`Invalid model configuration: ${modelError}`);
-    const model = modelRegistry.find("mimo", "mimo-v2.5-pro");
-    if (!model) throw new Error("MiMo model mimo-v2.5-pro is not configured");
+    const { models, defaultModel } = loadLizaModels(this.modelsPath);
+    const model = modelRegistry.find(defaultModel.provider, defaultModel.id);
+    if (!model) throw new Error(`Default model ${defaultModel.alias} (${defaultModel.provider}/${defaultModel.id}) is not configured`);
+
     this.modelRegistry = modelRegistry;
+    this.lizaModels = models;
+    this.defaultModel = defaultModel;
     const toolRegistry = createLizaToolRegistry(this.requirePort());
 
     const resourceLoader = new DefaultResourceLoader({
@@ -156,6 +164,14 @@ export class PiDriver implements AgentDriver {
     this.session?.dispose();
     this.session = undefined;
     this.modelRegistry = undefined;
+    this.lizaModels = [];
+    this.defaultModel = undefined;
+  }
+
+  private aliasForModel(provider: string, id: string): string {
+    const match = this.lizaModels.find((m) => m.provider === provider && m.id === id);
+    if (!match) throw new Error(`Model has no LIZA alias: ${provider}/${id}`);
+    return match.alias;
   }
 
   private requireSession(): AgentSession {
@@ -167,16 +183,4 @@ export class PiDriver implements AgentDriver {
     if (!this.port) throw new Error("DOS client is not connected");
     return this.port;
   }
-}
-
-function modelSelection(alias: string): { provider: string; id: string } | undefined {
-  if (alias === "mimo") return { provider: "mimo", id: "mimo-v2.5-pro" };
-  if (alias === "ds" || alias === "deepseek") return { provider: "openrouter", id: "deepseek/deepseek-v4-pro" };
-  return undefined;
-}
-
-function modelAlias(provider: string, id: string): string {
-  if (provider === "mimo" && id === "mimo-v2.5-pro") return "mimo";
-  if (provider === "openrouter" && id === "deepseek/deepseek-v4-pro") return "ds";
-  throw new Error(`Model has no LIZA alias: ${provider}/${id}`);
 }
