@@ -172,18 +172,13 @@ export class DosPeer {
     const normalized = toDosAscii(content).replace(/\n/g, "\r\n");
     const bytes = Buffer.from(normalized, "ascii");
     if (bytes.length > 65535) throw new RangeError("text content must not exceed 65535 DOS bytes per call");
-    return this.writeFileBytes(path, bytes, mode);
-  }
-
-  writeFileBytes(path: string, contentBytes: Uint8Array, mode: "overwrite" | "append"): Promise<WriteFileResult> {
     const filePath = encodePath(path);
-    if (contentBytes.length > 1048576) throw new RangeError("binary content must not exceed 1 MiB per call");
     const sequence = this.allocateSequence();
     const start = Buffer.concat([Buffer.from([mode === "overwrite" ? 1 : 2]), filePath]);
     return new Promise<WriteFileResult>((resolve, reject) => {
       this.fileOperations.add(sequence, "DOS file operation", { kind: "write", resolve, reject });
       this.sendFrame(MessageType.WriteFileStart, sequence, start);
-      for (const chunk of splitPayload(contentBytes, 512)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
+      for (const chunk of splitPayload(bytes, 512)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
       this.sendFrame(MessageType.WriteFileEnd, sequence, Buffer.alloc(0));
     });
   }

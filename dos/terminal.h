@@ -9,7 +9,6 @@ void terminal_write(const char *text);
 void terminal_status_start(const char *label, const char *detail);
 void terminal_status_finish(int success);
 void terminal_status_update(void);
-void terminal_record(const char *text);
 void terminal_backspace(void);
 void terminal_handle_key(int key);
 void terminal_reset(void);

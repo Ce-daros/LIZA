@@ -5,7 +5,6 @@ import type { ListFilesResult, ReadFileResult, WriteFileResult } from "./dos-pee
 export interface FileOperations {
   read(path: string, offset: number, maxBytes: number): Promise<ReadFileResult>;
   write(path: string, content: string, mode: "overwrite" | "append"): Promise<WriteFileResult>;
-  writeBytes(path: string, content: Uint8Array, mode: "overwrite" | "append"): Promise<WriteFileResult>;
   list(path: string, pattern: string, cursor: number, limit: number): Promise<ListFilesResult>;
 }
 

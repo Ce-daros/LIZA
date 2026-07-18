@@ -216,12 +216,6 @@ void terminal_status_update(void)
     if (terminal_view_row == terminal_latest_view_row()) terminal_redraw();
 }
 
-void terminal_record(const char *text)
-{
-    terminal_append((const unsigned char *)text, (unsigned short)strlen(text),
-                    terminal_color(0x07), 0);
-}
-
 void terminal_backspace(void)
 {
     int follow = terminal_view_row == terminal_latest_view_row();

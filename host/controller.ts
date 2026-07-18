@@ -138,10 +138,6 @@ export class LizaController {
         this.flushAssistantText();
         return peer.writeFile(path, content, mode);
       },
-      writeBytes: (path, content, mode) => {
-        this.flushAssistantText();
-        return peer.writeFileBytes(path, content, mode);
-      },
       list: (path, pattern, cursor, limit) => {
         this.flushAssistantText();
         return peer.listFiles(path, pattern, cursor, limit);

@@ -49,7 +49,6 @@ function inertPort(): DosSessionPort {
     execute: unavailable,
     read: unavailable,
     write: unavailable,
-    writeBytes: unavailable,
     list: unavailable,
     reportToolStatus: () => {},
   };
