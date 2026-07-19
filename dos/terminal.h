@@ -13,6 +13,8 @@ void terminal_backspace(void);
 void terminal_handle_key(int key);
 void terminal_reset(void);
 void terminal_apply_default_theme(void);
+void terminal_apply_neon_theme(void);
+unsigned char terminal_neon_color(void);
 void terminal_restore_theme(void);
 unsigned char terminal_color(unsigned char foreground);
 int terminal_at_line_start(void);

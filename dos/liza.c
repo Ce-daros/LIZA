@@ -30,6 +30,29 @@ static FILE *active_write_file;
 static unsigned short active_write_sequence;
 static unsigned short active_write_status;
 static unsigned long active_write_bytes;
+static int own_status_active;
+static int neon_theme_active;
+static unsigned char neon_color_index;
+
+static unsigned char neon_next_color(void)
+{
+    static const unsigned char neon_colors[] = {0x0d, 0x0b, 0x0e, 0x0a};
+    unsigned char color = neon_colors[neon_color_index];
+    neon_color_index = (neon_color_index + 1) % 4;
+    return color;
+}
+
+static void own_status_start(const char *label, const char *detail)
+{
+    terminal_status_start(label, detail);
+    own_status_active = 1;
+}
+
+static void own_status_finish(int success)
+{
+    terminal_status_finish(success);
+    own_status_active = 0;
+}
 
 static void begin_host_wait(void)
 {
@@ -86,7 +109,7 @@ static int wait_for(unsigned char type, unsigned short sequence, int seconds)
     while (time(NULL) < deadline) {
         if (poll_frame() && frame.type == type && frame.sequence == sequence)
             return 1;
-        if (last_host_activity != 0 && !maintain_link()) return 0;
+        if (!maintain_link()) return 0;
         if (kbhit() && getch() == 27) return 0;
     }
     return 0;
@@ -166,8 +189,11 @@ static int write_capture(const char *message, int result)
 {
     FILE *file = fopen(CAPTURE_FILE, "wb");
     if (file == NULL) return 1;
-    fputs(message, file);
-    fclose(file);
+    if (fputs(message, file) == EOF) {
+        fclose(file);
+        return 1;
+    }
+    if (fclose(file) != 0) return 1;
     return result;
 }
 
@@ -195,11 +221,14 @@ static int execute_state_command(char *command)
     }
 
     if (same_word(command, "SET")) {
-        static char env_line[256];
+        char *env_line;
         argument = skip_spaces(command + 3);
         if (*argument == '\0') return -1;
-        if (strlen(argument) >= sizeof(env_line))
-            return write_capture("Environment assignment is too long.\r\n", 1);
+        /* putenv keeps the pointer, so the buffer must outlive this call;
+           DOS has no clean unsetenv, so the old allocation is leaked. */
+        env_line = malloc(strlen(argument) + 1);
+        if (env_line == NULL)
+            return write_capture("Out of memory.\r\n", 1);
         strcpy(env_line, argument);
         if (putenv(env_line) == 0) return write_capture("", 0);
         return write_capture("Unable to set environment variable.\r\n", 1);
@@ -260,9 +289,9 @@ static int return_command_result(unsigned short sequence, char *command)
     unsigned short count;
     int result;
 
-    terminal_status_start("EXEC", command);
+    own_status_start("EXEC", command);
     result = execute_captured(command);
-    terminal_status_finish(result == 0);
+    own_status_finish(result == 0);
     begin_host_wait();
     file = fopen(CAPTURE_FILE, "rb");
     if (file != NULL) {
@@ -331,7 +360,7 @@ static int handle_read_file(const liza_frame *request)
     offset = read_u32(request->payload);
     maximum = request->payload[4] | ((unsigned short)request->payload[5] << 8);
     copy_path(path, request->payload + 6, request->length - 6);
-    terminal_status_start("READ", path);
+    own_status_start("READ", path);
     file = fopen(path, "rb");
     if (file == NULL) {
         status = errno;
@@ -363,7 +392,7 @@ static int handle_read_file(const liza_frame *request)
     write_u16(ending, status);
     write_u32(ending + 2, position);
     ending[6] = position >= end;
-    terminal_status_finish(status == 0);
+    own_status_finish(status == 0);
     return send_at(LIZA_READ_FILE_END, request->sequence, ending, sizeof(ending));
 }
 
@@ -382,7 +411,7 @@ static int handle_write_start(const liza_frame *request)
     if (request->payload[0] == 1) mode = "wb";
     else if (request->payload[0] == 2) mode = "ab";
     else return 0;
-    terminal_status_start("WRITE", path);
+    own_status_start("WRITE", path);
     active_write_file = fopen(path, mode);
     if (active_write_file == NULL) active_write_status = errno;
     return 1;
@@ -412,7 +441,7 @@ static int handle_write_end(const liza_frame *request)
     }
     write_u16(result, active_write_status);
     write_u32(result + 2, active_write_bytes);
-    terminal_status_finish(active_write_status == 0);
+    own_status_finish(active_write_status == 0);
     return send_at(LIZA_WRITE_FILE_RESULT, request->sequence, result,
                    sizeof(result));
 }
@@ -453,7 +482,7 @@ static int handle_list_files(const liza_frame *request)
     if (length != 0 && specification[length - 1] != '\\' &&
         specification[length - 1] != '/') strcat(specification, "\\");
     strcat(specification, pattern);
-    terminal_status_start("FILES", specification);
+    own_status_start("FILES", specification);
 
     status = _dos_findfirst(specification,
                             _A_RDONLY | _A_HIDDEN | _A_SYSTEM |
@@ -490,7 +519,7 @@ static int handle_list_files(const liza_frame *request)
     write_u16(ending, result_status);
     write_u16(ending + 2, next);
     ending[4] = eof;
-    terminal_status_finish(result_status == 0);
+    own_status_finish(result_status == 0);
     return send_at(LIZA_LIST_FILES_END, request->sequence, ending,
                    sizeof(ending));
 }
@@ -525,8 +554,29 @@ static void handle_tool_status(const liza_frame *status)
         detail[used++] = status->payload[index++];
     detail[used] = '\0';
     if (status->payload[0] == 0) terminal_status_start(label, detail);
-    else if (status->payload[0] == 1) terminal_status_finish(1);
-    else if (status->payload[0] == 2) terminal_status_finish(0);
+    else if (status->payload[0] == 1 && !own_status_active)
+        terminal_status_finish(1);
+    else if (status->payload[0] == 2 && !own_status_active)
+        terminal_status_finish(0);
+}
+
+static int reject_long_command(unsigned short sequence)
+{
+    static const unsigned char message[] =
+        "Command is too long; refused to execute.\r\n";
+    unsigned char ending[71];
+    char cwd[67];
+    unsigned short count;
+
+    if (!send_at(LIZA_EXEC_RESULT_CHUNK, sequence, message,
+                 sizeof(message) - 1)) return 0;
+    ending[0] = 1;
+    ending[1] = 0;
+    ending[2] = 1;
+    if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
+    count = (unsigned short)strlen(cwd);
+    memcpy(ending + 3, cwd, count);
+    return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 3);
 }
 
 static int run_turn(const char *prompt)
@@ -557,11 +607,13 @@ static int run_turn(const char *prompt)
                 display_styled(frame.payload[0], frame.payload + 1,
                                frame.length - 1);
             } else if (frame.type == LIZA_EXEC_REQUEST) {
-                count = frame.length;
-                if (count >= sizeof(command)) count = sizeof(command) - 1;
-                memcpy(command, frame.payload, count);
-                command[count] = '\0';
-                if (!return_command_result(frame.sequence, command)) return 0;
+                if (frame.length >= sizeof(command)) {
+                    if (!reject_long_command(frame.sequence)) return 0;
+                } else {
+                    memcpy(command, frame.payload, frame.length);
+                    command[frame.length] = '\0';
+                    if (!return_command_result(frame.sequence, command)) return 0;
+                }
             } else if (frame.type == LIZA_READ_FILE_REQUEST) {
                 if (!handle_read_file(&frame)) return 0;
             } else if (frame.type == LIZA_WRITE_FILE_START) {
@@ -654,13 +706,22 @@ static int interactive(void)
     unsigned short sequence;
 
     display_styled(0x0b, (const unsigned char *)"LIZA 0.1", 8);
-    terminal_write("  /EXIT /NEW /THEME /MODEL /EFFORT /STATUS\n");
+    terminal_write("  /EXIT /NEW /THEME [default|neon]\n");
     for (;;) {
         if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
         terminal_write("\n");
-        display_styled(0x0a, (const unsigned char *)"[", 1);
-        display_styled(0x0a, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
-        display_styled(0x0a, (const unsigned char *)"] > ", 4);
+        if (neon_theme_active) {
+            unsigned char c1 = neon_next_color();
+            unsigned char c2 = neon_next_color();
+            unsigned char c3 = neon_next_color();
+            display_styled(c1, (const unsigned char *)"[", 1);
+            display_styled(c2, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
+            display_styled(c3, (const unsigned char *)"] > ", 4);
+        } else {
+            display_styled(0x0a, (const unsigned char *)"[", 1);
+            display_styled(0x0a, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
+            display_styled(0x0a, (const unsigned char *)"] > ", 4);
+        }
         if (!read_prompt(prompt, sizeof(prompt))) return 1;
         if (same_text(prompt, "/exit")) return 1;
         if (same_text(prompt, "/new")) {
@@ -685,7 +746,15 @@ static int interactive(void)
         }
         if (same_text(prompt, "/theme") || same_text(prompt, "/theme default")) {
             terminal_apply_default_theme();
+            neon_theme_active = 0;
             display_styled(0x0a, (const unsigned char *)"Theme: default\n", 15);
+            continue;
+        }
+        if (same_text(prompt, "/theme neon")) {
+            terminal_apply_neon_theme();
+            neon_theme_active = 1;
+            neon_color_index = 0;
+            display_styled(0x0d, (const unsigned char *)"Theme: neon\n", 12);
             continue;
         }
         if (prompt[0] != '\0' && !run_turn(prompt)) return 0;

@@ -24,6 +24,8 @@ int serial_open(void)
     outp(com_base + 3, 0x03);
     outp(com_base + 2, 0xc7);
     outp(com_base + 4, 0x0b);
+    inp(com_base + 5);
+    inp(com_base);
     return 1;
 }
 

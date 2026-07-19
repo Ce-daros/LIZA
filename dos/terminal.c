@@ -276,12 +276,37 @@ void terminal_reset(void)
     terminal_cursor_column = 0;
     terminal_view_row = 0;
     terminal_status_active = 0;
+    last_output = '\n';
 }
 
 void terminal_apply_default_theme(void)
 {
     terminal_color(0x07);
     terminal_attribute = 0x07;
+}
+
+static unsigned char neon_colors[] = {
+    0x0b,  /* bright cyan */
+    0x0d,  /* bright magenta */
+    0x0e,  /* bright yellow */
+    0x0a,  /* bright green */
+    0x0c,  /* bright red */
+    0x0f,  /* bright white */
+};
+static int neon_color_index = 0;
+
+void terminal_apply_neon_theme(void)
+{
+    terminal_color(0x0b);
+    terminal_attribute = 0x0b;
+    neon_color_index = 0;
+}
+
+unsigned char terminal_neon_color(void)
+{
+    unsigned char color = neon_colors[neon_color_index];
+    neon_color_index = (neon_color_index + 1) % (sizeof(neon_colors) / sizeof(neon_colors[0]));
+    return color;
 }
 
 void terminal_restore_theme(void)
