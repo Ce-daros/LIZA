@@ -5,6 +5,22 @@ export const VERSION = 1;
 export const MAX_PAYLOAD = 1024;
 export const HEADER_SIZE = 8;
 
+export const filechunkbytes = 512;
+export const styledchunkbytes = 1023;
+export const errormessagebytes = 1024;
+export const toolstatuslabelbytes = 15;
+export const toolstatusdetailbytes = 80;
+export const maxpromptbytes = 65536;
+export const maxpathbytes = 67;
+export const maxcontentchars = 12000;
+export const defaultreconnectdelayms = 1000;
+export const maxoutputchars = 12000;
+export const terminalwidth = 80;
+export const promptsize = 512;
+export const commandsize = 128;
+export const displayheight = 25;
+export const historyrows = 150;
+
 export enum MessageType {
   Hello = 1,
   HelloAck = 2,

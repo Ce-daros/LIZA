@@ -7,6 +7,23 @@
     { "name": "ONE_SHOT", "value": 1 },
     { "name": "INTERACTIVE", "value": 2 }
   ],
+  "hostLimits": {
+    "fileChunkBytes": 512,
+    "styledChunkBytes": 1023,
+    "errorMessageBytes": 1024,
+    "toolStatusLabelBytes": 15,
+    "toolStatusDetailBytes": 80,
+    "maxPromptBytes": 65536,
+    "maxPathBytes": 67,
+    "maxContentChars": 12000,
+    "defaultReconnectDelayMs": 1000,
+    "maxOutputChars": 12000,
+    "terminalWidth": 80,
+    "promptSize": 512,
+    "commandSize": 128,
+    "displayHeight": 25,
+    "historyRows": 150
+  },
   "messages": [
     { "name": "HELLO", "value": 1, "direction": "DOS to host", "payload": "client identifier" },
     { "name": "HELLO_ACK", "value": 2, "direction": "host to DOS", "payload": "server identifier; same sequence" },
