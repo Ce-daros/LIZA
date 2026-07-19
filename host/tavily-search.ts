@@ -35,7 +35,7 @@ export function createTavilySearchTool(client: TavilyClient) {
           details: payload,
         };
       } catch (error) {
-        if (isTavilyMisconfigured(error)) throw new Error("TAVILY_API_KEY is not configured");
+        if (isTavilyMisconfigured(error)) throw new Error("TAVILY_API_KEY is not configured", { cause: error });
         throw error;
       }
     },

@@ -57,11 +57,6 @@ export class MarkdownRenderer {
     renderer.rules.list_item_open = () => push({ style: TextStyle.Normal, prefix: "- " });
     renderer.rules.list_item_close = () => pop();
     renderer.rules.code_block = (tokens, idx) => emit(TextStyle.Code, `${tokens[idx]!.content}\n`);
-    renderer.rules.fence = (tokens, idx) => {
-      const content = tokens[idx]!.content.replace(/\n$/, "");
-      emit(TextStyle.Code, `${content}\n`);
-      return "";
-    };
     renderer.rules.hardbreak = () => emit(TextStyle.Normal, "\n");
     renderer.rules.softbreak = () => emit(TextStyle.Normal, "\n");
 
@@ -75,8 +70,7 @@ export class MarkdownRenderer {
     renderer.rules.text = (tokens, idx) => {
       const frame = current();
       emit(frame.style, frame.prefix ? `${frame.prefix}${tokens[idx]!.content}` : tokens[idx]!.content);
-      const top = this.stack[this.stack.length - 1];
-      if (top) top.prefix = undefined;
+      for (const entry of this.stack) entry.prefix = undefined;
       return "";
     };
 

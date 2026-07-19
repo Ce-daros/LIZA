@@ -1,5 +1,5 @@
 import { tavily } from "@tavily/core";
-import pRetry, { AbortError } from "p-retry";
+import pRetry from "p-retry";
 
 export interface TavilySearchArgs {
   query: string;
@@ -133,4 +133,4 @@ export function isTavilyMisconfigured(error: unknown): error is TavilyMisconfigu
   return error instanceof TavilyMisconfiguredError;
 }
 
-export { AbortError, mapTavilyError };
+export { mapTavilyError };

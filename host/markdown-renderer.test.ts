@@ -33,3 +33,17 @@ test("renders the supported line and inline Markdown subset incrementally", () =
     [TextStyle.Normal, "- [x] done"],
   ]);
 });
+
+test("does not repeat the list prefix inside inline styled spans", () => {
+  const spans: Array<[TextStyle, string]> = [];
+  const renderer = new MarkdownRenderer({ write: (style, text) => spans.push([style, text]) });
+  renderer.feed("- **bold** plain\n");
+  renderer.finish();
+
+  assert.deepEqual(spans, [
+    [TextStyle.Normal, "- "],
+    [TextStyle.Strong, "bold"],
+    [TextStyle.Normal, " plain"],
+    [TextStyle.Normal, "\n"],
+  ]);
+});

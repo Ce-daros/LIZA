@@ -64,3 +64,25 @@ test("throws when no aliased models are configured", () => {
   assert.throws(() => loadLizaModels(file), /No aliased models/);
   rmSync(path.dirname(file), { recursive: true });
 });
+
+test("throws on duplicate aliases", () => {
+  const file = writeConfig({
+    providers: {
+      mimo: { models: [{ id: "a", alias: "dup", name: "A" }] },
+      openrouter: { models: [{ id: "b", alias: "dup", name: "B" }] },
+    },
+  });
+  assert.throws(() => loadLizaModels(file), /Duplicate model alias 'dup'/);
+  rmSync(path.dirname(file), { recursive: true });
+});
+
+test("throws on multiple default markers", () => {
+  const file = writeConfig({
+    providers: {
+      mimo: { models: [{ id: "a", alias: "one", default: true, name: "A" }] },
+      openrouter: { models: [{ id: "b", alias: "two", default: true, name: "B" }] },
+    },
+  });
+  assert.throws(() => loadLizaModels(file), /Multiple default models/);
+  rmSync(path.dirname(file), { recursive: true });
+});

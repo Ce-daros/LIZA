@@ -3,9 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
-import { execa, ExecaError } from "execa";
-
-const MAX_OUTPUT_CHARS = 12000;
+import { execa } from "execa";
+import { maxoutputchars } from "./protocol.generated.js";
 
 interface PythonResult {
   stdout: string;
@@ -21,7 +20,7 @@ export function createPythonTool(python = process.env.LIZA_PYTHON ?? "python") {
     description:
       "Run Python 3 source on the Windows host (never on DOS) and return stdout, stderr, and the exit code. " +
       "NumPy, SciPy, pandas, Matplotlib, and SymPy are installed. Code runs in a fresh temporary directory " +
-      "without host environment variables; use it for computation, not for touching host files.",
+      "with only the minimal environment needed to run the interpreter; use it for computation, not for touching host files.",
     parameters: Type.Object({
       source: Type.String({ minLength: 1, maxLength: 20000 }),
       timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 120, default: 30 })),
@@ -45,36 +44,32 @@ export function createPythonTool(python = process.env.LIZA_PYTHON ?? "python") {
 }
 
 async function runPython(python: string, script: string, cwd: string, timeoutMs: number): Promise<PythonResult> {
-  try {
-    const result = await execa(python, ["-I", script], {
-      cwd,
-      timeout: timeoutMs,
-      reject: false,
-      windowsHide: true,
-      all: false,
-      env: {
-        SystemRoot: process.env.SystemRoot ?? "",
-        PATH: process.env.PATH ?? "",
-        TEMP: process.env.TEMP ?? cwd,
-        TMP: process.env.TMP ?? cwd,
-        PYTHONIOENCODING: "utf-8",
-        PYTHONUTF8: "1",
-        MPLBACKEND: "Agg",
-      },
-      extendEnv: false,
-    });
-    return {
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? "",
-      exitCode: result.exitCode ?? null,
-      timedOut: result.timedOut,
-    };
-  } catch (error) {
-    if (error instanceof ExecaError && error.shortMessage) {
-      throw new Error(`Failed to start the Python interpreter '${python}': ${error.shortMessage}`);
-    }
-    throw error;
+  const result = await execa(python, ["-I", script], {
+    cwd,
+    timeout: timeoutMs,
+    reject: false,
+    windowsHide: true,
+    all: false,
+    env: {
+      SystemRoot: process.env.SystemRoot ?? "",
+      PATH: process.env.PATH ?? "",
+      TEMP: process.env.TEMP ?? cwd,
+      TMP: process.env.TMP ?? cwd,
+      PYTHONIOENCODING: "utf-8",
+      PYTHONUTF8: "1",
+      MPLBACKEND: "Agg",
+    },
+    extendEnv: false,
+  });
+  if (result.exitCode === undefined && !result.timedOut) {
+    throw new Error(`Failed to start the Python interpreter '${python}': ${result.shortMessage}`);
   }
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    exitCode: result.exitCode ?? null,
+    timedOut: result.timedOut,
+  };
 }
 
 function formatResult(result: PythonResult, timeoutSeconds: number): string {
@@ -87,5 +82,5 @@ function formatResult(result: PythonResult, timeoutSeconds: number): string {
 }
 
 function truncate(text: string): string {
-  return text.length > MAX_OUTPUT_CHARS ? `${text.slice(0, MAX_OUTPUT_CHARS)}\n\n[truncated]` : text;
+  return text.length > maxoutputchars ? `${text.slice(0, maxoutputchars)}\n\n[truncated]` : text;
 }

@@ -17,7 +17,6 @@ export class PiDriver implements AgentDriver {
   private session: AgentSession | undefined;
   private modelRegistry: ModelRegistry | undefined;
   private lizaModels: LizaModel[] = [];
-  private defaultModel: LizaModel | undefined;
   private unsubscribe: (() => void) | undefined;
   private textSink: ((text: string) => void) | undefined;
   private port: DosSessionPort | undefined;
@@ -76,8 +75,9 @@ export class PiDriver implements AgentDriver {
   async run(prompt: string, onText: (text: string) => void): Promise<void> {
     if (!this.session) throw new Error("Pi session is not initialized");
     this.textSink = onText;
+    const timestampedPrompt = `Host local date and time: ${new Date().toString()}\n\n${prompt}`;
     try {
-      await this.session.prompt(prompt, { source: "interactive" });
+      await this.session.prompt(timestampedPrompt, { source: "interactive" });
     } finally {
       this.textSink = undefined;
     }
@@ -108,7 +108,6 @@ export class PiDriver implements AgentDriver {
 
     this.modelRegistry = modelRegistry;
     this.lizaModels = models;
-    this.defaultModel = defaultModel;
     const toolRegistry = createLizaToolRegistry(this.requirePort());
 
     const resourceLoader = new DefaultResourceLoader({
@@ -165,7 +164,6 @@ export class PiDriver implements AgentDriver {
     this.session = undefined;
     this.modelRegistry = undefined;
     this.lizaModels = [];
-    this.defaultModel = undefined;
   }
 
   private aliasForModel(provider: string, id: string): string {

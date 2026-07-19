@@ -29,10 +29,13 @@ export interface LizaModels {
 export function loadLizaModels(configPath: string): LizaModels {
   const raw = JSON.parse(readFileSync(configPath, "utf8")) as RawModelsConfig;
   const models: LizaModel[] = [];
+  const seenAliases = new Set<string>();
   let defaultModel: LizaModel | undefined;
   for (const [providerName, provider] of Object.entries(raw.providers)) {
     for (const model of provider.models ?? []) {
       if (!model.alias) continue;
+      if (seenAliases.has(model.alias)) throw new Error(`Duplicate model alias '${model.alias}' in ${configPath}`);
+      seenAliases.add(model.alias);
       const entry: LizaModel = {
         alias: model.alias,
         provider: providerName,
@@ -40,7 +43,10 @@ export function loadLizaModels(configPath: string): LizaModels {
         displayName: model.name,
       };
       models.push(entry);
-      if (model.default) defaultModel = entry;
+      if (model.default) {
+        if (defaultModel) throw new Error(`Multiple default models in ${configPath}: '${defaultModel.alias}' and '${entry.alias}'`);
+        defaultModel = entry;
+      }
     }
   }
   if (!defaultModel) defaultModel = models[0];
