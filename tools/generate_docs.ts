@@ -27,9 +27,10 @@ async function replaceSection(file: string, name: string, generated: string): Pr
   const source = await readFile(path.join(root, file), "utf8");
   const start = `<!-- generated:${name}:start -->`;
   const end = `<!-- generated:${name}:end -->`;
+  if (!source.includes(start)) throw new Error(`${file} is missing the ${name} start marker`);
+  if (!source.includes(end)) throw new Error(`${file} is missing the ${name} end marker`);
   const pattern = new RegExp(`${escape(start)}[\\s\\S]*?${escape(end)}`);
   const content = source.replace(pattern, `${start}\n${generated}\n${end}`);
-  if (content === source && !source.includes(start)) throw new Error(`${file} has no ${name} generation markers`);
   return { file, content, changed: content !== source };
 }
 

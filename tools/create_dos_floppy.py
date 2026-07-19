@@ -10,6 +10,8 @@ DATA_START = 1 + FAT_SECTORS * 2 + ROOT_SECTORS
 
 def short_name(name: str) -> bytes:
     stem, suffix = name.upper().split(".", 1)
+    assert len(stem) <= 8, f"stem too long for 8.3: {name}"
+    assert len(suffix) <= 3, f"suffix too long for 8.3: {name}"
     return f"{stem:<8}{suffix:<3}".encode("ascii")
 
 def fat12_set(fat: bytearray, cluster: int, value: int) -> None:
@@ -70,7 +72,10 @@ def make_image(output: Path, files: list[tuple[str, bytes]]) -> None:
     next_cluster = 2
     entries = []
     for name, content in files:
-        clusters = max(1, (len(content) + SECTOR - 1) // SECTOR)
+        clusters = (len(content) + SECTOR - 1) // SECTOR
+        if clusters == 0:
+            entries.append((name, 0, 0))
+            continue
         first = next_cluster
         for cluster in range(first, first + clusters - 1):
             fat12_set(fat, cluster, cluster + 1)
@@ -78,7 +83,8 @@ def make_image(output: Path, files: list[tuple[str, bytes]]) -> None:
         for index in range(clusters):
             cluster = first + index
             start = (DATA_START + cluster - 2) * SECTOR
-            image[start:start + len(content[index * SECTOR:(index + 1) * SECTOR])] = content[index * SECTOR:(index + 1) * SECTOR]
+            chunk = content[index * SECTOR:(index + 1) * SECTOR]
+            image[start:start + len(chunk)] = chunk
         entries.append((name, len(content), first))
         next_cluster += clusters
 
