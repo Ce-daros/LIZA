@@ -1,7 +1,7 @@
 import { SerialPort } from "serialport";
 import type { WireEndpoint } from "./pipe-server.js";
-
-const DEFAULT_RECONNECT_DELAY_MS = 1000;
+import { defaultreconnectdelayms } from "./protocol.generated.js";
+import { logger } from "./logger.js";
 
 export interface SerialConnectorOptions {
   path: string;
@@ -12,6 +12,7 @@ export interface SerialConnectorOptions {
 export class SerialConnector {
   private reconnectTimer: NodeJS.Timeout | undefined;
   private currentPort: SerialPort | undefined;
+  private closed = false;
 
   constructor(private readonly options: SerialConnectorOptions) {}
 
@@ -19,12 +20,18 @@ export class SerialConnector {
     this.open(attach);
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
+    this.closed = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
-    this.currentPort?.close();
+    if (this.currentPort) {
+      await new Promise<void>((resolve) => {
+        this.currentPort!.close(() => resolve());
+      });
+      this.currentPort = undefined;
+    }
   }
 
   private open(attach: (port: WireEndpoint, label: string) => void): void {
@@ -32,22 +39,22 @@ export class SerialConnector {
     this.currentPort = port;
     attach(port, "serial");
     port.on("close", () => {
-      console.log("[serial] disconnected; retrying");
-      this.scheduleReconnect(attach);
+      logger.info("[serial] disconnected; retrying");
+      if (!this.closed) this.scheduleReconnect(attach);
     });
     port.open((error) => {
       if (error) {
-        console.error(`[serial] cannot open ${this.options.path}: ${error.message}`);
-        this.scheduleReconnect(attach);
+        logger.error(`[serial] cannot open ${this.options.path}: ${error.message}`);
+        if (!this.closed) this.scheduleReconnect(attach);
         return;
       }
-      console.log(`[serial] connected to ${this.options.path} at ${this.options.baudRate} baud`);
+      logger.info(`[serial] connected to ${this.options.path} at ${this.options.baudRate} baud`);
     });
   }
 
   private scheduleReconnect(attach: (port: WireEndpoint, label: string) => void): void {
     if (this.reconnectTimer) return;
-    const delay = this.options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
+    const delay = this.options.reconnectDelayMs ?? defaultreconnectdelayms;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       this.open(attach);

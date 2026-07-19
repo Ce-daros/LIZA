@@ -1,4 +1,5 @@
 import net from "node:net";
+import { logger } from "./logger.js";
 
 export interface WireEndpoint {
   write(data: Buffer): unknown;
@@ -23,8 +24,8 @@ export class PipeServer {
         if (this.activeSocket === socket) this.activeSocket = undefined;
       });
     });
-    server.on("error", (error) => console.error(`[pipe] ${error.message}`));
-    server.listen(this.pipePath, () => console.log(`[pipe] listening on ${this.pipePath}`));
+    server.on("error", (error) => logger.error(`[pipe] ${error.message}`));
+    server.listen(this.pipePath, () => logger.info(`[pipe] listening on ${this.pipePath}`));
     this.server = server;
   }
 

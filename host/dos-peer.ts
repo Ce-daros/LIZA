@@ -9,13 +9,18 @@ import {
   type PeerHandlers,
   type ReadFileResult,
   type ShellResult,
+  type WriteFileMode,
   type WriteFileResult,
 } from "./dos-peer-types.js";
 import type { ToolStatusState } from "./tool-status.js";
-
-const FILE_CHUNK_BYTES = 512;
-const STYLED_CHUNK_BYTES = 1023;
-const ERROR_MESSAGE_BYTES = 1024;
+import {
+  filechunkbytes,
+  styledchunkbytes,
+  errormessagebytes,
+  toolstatuslabelbytes,
+  toolstatusdetailbytes,
+  maxpromptbytes,
+} from "./protocol.generated.js";
 
 interface PendingExecution extends PendingRequest {
   chunks: Buffer[];
@@ -43,6 +48,7 @@ export type { FrameWriter, ListFilesResult, PeerHandlers, ReadFileResult, ShellR
 
 export class DosPeer {
   private readonly promptChunks = new Map<number, Buffer[]>();
+  private readonly promptOverflow = new Set<number>();
   private readonly executions: PendingRequests<PendingExecution>;
   private readonly fileOperations: PendingRequests<PendingRead | PendingWrite | PendingList>;
   private readonly inbound = new InboundQueue();
@@ -95,7 +101,7 @@ export class DosPeer {
     });
   }
 
-  writeFile(path: string, content: string, mode: "overwrite" | "append"): Promise<WriteFileResult> {
+  writeFile(path: string, content: string, mode: WriteFileMode): Promise<WriteFileResult> {
     const normalized = toDosAscii(content).replace(/\n/g, "\r\n");
     const bytes = Buffer.from(normalized, "ascii");
     if (bytes.length > 65535) throw new RangeError("text content must not exceed 65535 DOS bytes per call");
@@ -104,7 +110,7 @@ export class DosPeer {
     return new Promise<WriteFileResult>((resolve, reject) => {
       this.fileOperations.add(sequence, "DOS file operation", { kind: "write", resolve, reject });
       this.sendFrame(MessageType.WriteFileStart, sequence, start);
-      for (const chunk of splitPayload(bytes, FILE_CHUNK_BYTES)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
+      for (const chunk of splitPayload(bytes, filechunkbytes)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
       this.sendFrame(MessageType.WriteFileEnd, sequence, Buffer.alloc(0));
     });
   }
@@ -130,7 +136,7 @@ export class DosPeer {
 
   sendStyledAssistant(sequence: number, style: TextStyle, text: string): void {
     const ascii = Buffer.from(toDosAscii(text), "ascii");
-    for (const chunk of splitPayload(ascii, STYLED_CHUNK_BYTES)) {
+    for (const chunk of splitPayload(ascii, styledchunkbytes)) {
       this.sendFrame(MessageType.StyledAssistantChunk, sequence, Buffer.concat([Buffer.from([style]), chunk]));
     }
   }
@@ -138,9 +144,9 @@ export class DosPeer {
   sendToolStatus(sequence: number, state: ToolStatusState, label: string, detail = ""): void {
     const stateByte = state === "start" ? 0 : state === "ok" ? 1 : 2;
     const text = Buffer.concat([
-      Buffer.from(toDosAscii(label), "ascii"),
+      Buffer.from(toDosAscii(label).slice(0, toolstatuslabelbytes), "ascii"),
       Buffer.from([0]),
-      Buffer.from(toDosAscii(detail), "ascii"),
+      Buffer.from(toDosAscii(detail).slice(0, toolstatusdetailbytes), "ascii"),
     ]);
     this.sendFrame(MessageType.ToolStatus, sequence, Buffer.concat([Buffer.from([stateByte]), text]));
   }
@@ -154,7 +160,7 @@ export class DosPeer {
   }
 
   sendError(sequence: number, message: string): void {
-    const payload = Buffer.from(toDosAscii(message).slice(0, ERROR_MESSAGE_BYTES), "ascii");
+    const payload = Buffer.from(toDosAscii(message).slice(0, errormessagebytes), "ascii");
     this.sendFrame(MessageType.Error, sequence, payload);
   }
 
@@ -164,6 +170,7 @@ export class DosPeer {
     this.executions.rejectAll("DOS client disconnected during command execution");
     this.fileOperations.rejectAll("DOS client disconnected during file operation");
     this.promptChunks.clear();
+    this.promptOverflow.clear();
     this.handlers?.onDisconnect();
   }
 
@@ -231,12 +238,21 @@ export class DosPeer {
   }
 
   private receivePromptChunk(frame: Frame): void {
+    if (this.promptOverflow.has(frame.sequence)) return;
     const chunks = this.promptChunks.get(frame.sequence) ?? [];
+    const total = chunks.reduce((sum, chunk) => sum + chunk.length, frame.payload.length);
+    if (total > maxpromptbytes) {
+      this.promptChunks.delete(frame.sequence);
+      this.promptOverflow.add(frame.sequence);
+      this.sendError(frame.sequence, `Prompt exceeds ${maxpromptbytes} bytes`);
+      return;
+    }
     chunks.push(Buffer.from(frame.payload));
     this.promptChunks.set(frame.sequence, chunks);
   }
 
   private receivePromptEnd(frame: Frame): void {
+    if (this.promptOverflow.delete(frame.sequence)) return;
     const chunks = this.promptChunks.get(frame.sequence) ?? [];
     this.promptChunks.delete(frame.sequence);
     const prompt = Buffer.concat(chunks).toString("ascii");

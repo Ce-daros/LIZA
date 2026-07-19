@@ -1,4 +1,5 @@
 import { ClientMode, encodeExitCode, Frame, FrameDecoder, MessageType, encodeFrame } from "./protocol.js";
+import { toolstatuslabelbytes, toolstatusdetailbytes } from "./protocol.generated.js";
 
 export interface LizaDosSimulatorOptions {
   labelBytes?: number;
@@ -72,8 +73,8 @@ export interface ParsedAssistant {
   text: string;
 }
 
-const DEFAULT_LABEL_BYTES = 15;
-const DEFAULT_DETAIL_BYTES = 80;
+const DEFAULT_LABEL_BYTES = toolstatuslabelbytes;
+const DEFAULT_DETAIL_BYTES = toolstatusdetailbytes;
 
 export class LizaDosSimulator {
   readonly toolStatuses: ParsedToolStatus[] = [];

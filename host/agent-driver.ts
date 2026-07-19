@@ -20,7 +20,7 @@ export interface AgentDriver {
   connect(port: DosSessionPort): Promise<void>;
   disconnect(): void;
   getStatus(): AgentStatus;
-  setModel(modelId: string): Promise<AgentStatus>;
+  setModel(alias: string): Promise<AgentStatus>;
   setEffort(effort: string): AgentStatus;
   run(prompt: string, onText: (text: string) => void): Promise<void>;
   abort(): Promise<void>;

@@ -4,11 +4,12 @@ import { PiDriver } from "./pi-driver.js";
 import { PipeServer } from "./pipe-server.js";
 import { SerialConnector } from "./serial.js";
 import { FrameDecoder } from "./protocol.js";
+import { logger } from "./logger.js";
 
 async function main(): Promise<void> {
   const serialPath = process.env.LIZA_PORT;
   const pipePath = process.env.LIZA_PIPE ?? "\\\\.\\pipe\\liza-dos";
-  const baudRate = Number(process.env.LIZA_BAUD ?? "115200");
+  const baudRate = numberFromEnv("LIZA_BAUD") ?? 115200;
 
   const driver = await PiDriver.create();
   const controller = new LizaController(driver);
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
     endpoint.on("data", (chunk: unknown) => {
       for (const frame of decoder.push(chunk as Buffer)) peer.receive(frame);
     });
-    endpoint.on("error", (error: unknown) => console.error(`[${label}] ${(error as Error).message}`));
+    endpoint.on("error", (error: unknown) => logger.error(`[${label}] ${(error as Error).message}`));
     endpoint.on("close", () => {
       peer.close();
       if (activePeer === peer) activePeer = undefined;
@@ -43,10 +44,11 @@ async function main(): Promise<void> {
   transport.start(attachEndpoint);
 
   async function shutdown(): Promise<void> {
+    logger.info("Shutting down...");
     activePeer?.close();
     controller.dispose();
-    transport.stop();
-    if (transport instanceof PipeServer) await transport.stop();
+    await transport.stop();
+    logger.info("Shutdown complete");
   }
 
   process.once("SIGINT", () => void shutdown().finally(() => process.exit(0)));
@@ -54,7 +56,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(`[host] fatal: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+  logger.error(`[host] fatal: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
   process.exit(1);
 });
 

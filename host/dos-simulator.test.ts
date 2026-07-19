@@ -106,7 +106,7 @@ test("round trip: DosPeer.sendToolStatus wire bytes parse correctly on the DOS s
   assert.equal(simulator.toolStatuses[2]?.state, "fail");
 });
 
-test("round trip: tool status with long detail survives truncation on the DOS side", () => {
+test("round trip: tool status with long detail is truncated on the host side", () => {
   const simulator = new LizaDosSimulator();
   const peer = bindHostPeer(simulator);
   peer.sendToolStatus(20, "start", "FETCH", "https://example.com/" + "x".repeat(120));
@@ -114,7 +114,7 @@ test("round trip: tool status with long detail survives truncation on the DOS si
   const status = simulator.toolStatuses[0]!;
   assert.equal(status.label, "FETCH");
   assert.equal(status.detail.length, 80);
-  assert.equal(status.rawDetailLength, 140);
+  assert.equal(status.rawDetailLength, 80);
 });
 
 test("HELLO: the simulator's Hello payload round-trips through the host's HelloAck", () => {

@@ -8,6 +8,7 @@ export class LizaController {
   private activeSequence: number | undefined;
   private renderer: MarkdownRenderer | undefined;
   private running = false;
+  private cancelRequested = false;
 
   constructor(private readonly agent: AgentDriver) {}
 
@@ -77,7 +78,7 @@ export class LizaController {
     try {
       await this.agent.run(prompt, (text) => renderer.feed(text));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = this.cancelRequested ? "Cancelled" : error instanceof Error ? error.message : String(error);
       peer.sendError(sequence, message);
       console.error(`[agent] ${message}`);
     } finally {
@@ -86,6 +87,7 @@ export class LizaController {
       peer.sendComplete(sequence);
       this.running = false;
       this.activeSequence = undefined;
+      this.cancelRequested = false;
     }
   }
 
@@ -97,8 +99,8 @@ export class LizaController {
 
   private async onCancel(peer: DosPeer, sequence: number): Promise<void> {
     if (!this.running || sequence !== this.activeSequence) return;
+    this.cancelRequested = true;
     await this.agent.abort();
-    peer.sendError(sequence, "Cancelled");
   }
 
   private async onNewSession(peer: DosPeer, sequence: number): Promise<void> {
@@ -114,6 +116,7 @@ export class LizaController {
   private onDisconnect(peer: DosPeer): void {
     if (this.activePeer !== peer) return;
     this.activePeer = undefined;
+    if (this.running) void this.agent.abort();
     this.agent.disconnect();
     this.running = false;
     this.activeSequence = undefined;

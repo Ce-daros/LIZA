@@ -38,6 +38,17 @@ test("a task error is reported via onError and does not stop the next task", asy
   assert.equal((errors[0] as Error).message, "boom");
 });
 
+test("an onError that throws does not stop later tasks", async () => {
+  const queue = new InboundQueue();
+  const ran: string[] = [];
+
+  queue.enqueue(() => { throw new Error("boom"); }, () => { throw new Error("handler boom"); });
+  queue.enqueue(() => { ran.push("second"); }, () => {});
+
+  await queue.idle();
+  assert.deepEqual(ran, ["second"]);
+});
+
 test("idle() resolves immediately when no tasks have been enqueued", async () => {
   const queue = new InboundQueue();
 

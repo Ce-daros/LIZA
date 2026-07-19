@@ -9,8 +9,7 @@ export function buildDosContextPrompt(context: DosContext): string {
   const mode = context.mode === 1 ? "one-shot" : "interactive";
   const drive = context.cwd.length >= 2 && context.cwd[1] === ":" ? context.cwd.slice(0, 2) : "unknown";
   return `DOS environment for this invocation:
-- Host local date and time: ${new Date().toString()}
-- This is the Windows host's local clock, not the DOS clock
+- Host local date and time: (available on Windows host; not shown to model to preserve prefix cache)
 - Current drive: ${drive}
 - Current directory: ${context.cwd}
 - Client mode: ${mode}

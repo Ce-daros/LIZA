@@ -71,6 +71,22 @@ test("rejectAll() rejects every pending entry with the same message and clears t
   assert.equal(reqs.get(2), undefined);
 });
 
+test("add() with a duplicate sequence rejects the old entry and clears its timer", async () => {
+  const reqs = new PendingRequests<Captured>(20);
+  const first = capture();
+  const second = capture();
+  reqs.add(1, "DOS command", first.entry);
+  reqs.add(1, "DOS command", second.entry);
+
+  assert.ok(first.captured.value, "old entry must be rejected when superseded");
+  assert.match(first.captured.value!.message, /superseded/);
+  assert.equal(reqs.get(1), second.entry);
+  assert.equal(second.captured.value, undefined);
+
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.match(first.captured.value!.message, /superseded/, "old timer must not fire a second rejection");
+});
+
 test("unref()'d timers do not block process exit", async () => {
   const reqs = new PendingRequests<Captured>(5);
   const { entry } = capture();

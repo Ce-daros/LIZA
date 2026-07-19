@@ -23,9 +23,9 @@ class FakeAgent implements AgentDriver {
   }
   disconnect(): void { this.port = undefined; }
   getStatus(): AgentStatus { return this.status; }
-  async setModel(modelId: string): Promise<AgentStatus> {
-    if (!this.status.availableModels.includes(modelId)) throw new RangeError(`Unknown model: ${modelId}`);
-    this.status = { ...this.status, model: modelId };
+  async setModel(alias: string): Promise<AgentStatus> {
+    if (!this.status.availableModels.includes(alias)) throw new RangeError(`Unknown model: ${alias}`);
+    this.status = { ...this.status, model: alias };
     return this.status;
   }
   setEffort(effort: string): AgentStatus {
@@ -150,4 +150,52 @@ test("handles model, effort, and status commands without prompting the agent", a
   assert.equal(agent.status.model, "ds");
   assert.equal(agent.status.effort, "off");
   assert.equal(outgoing.filter((frame) => frame.type === MessageType.Complete).length, 3);
+});
+
+test("a cancel emits exactly one Cancelled error frame before Complete", async () => {
+  const agent = new FakeAgent();
+  let rejectRun!: (error: Error) => void;
+  agent.run = () => new Promise<void>((_resolve, reject) => { rejectRun = reject; });
+  agent.abort = async () => {
+    agent.aborted = true;
+    rejectRun(new Error("agent turn aborted"));
+  };
+  const outgoing: Frame[] = [];
+  const peer = new DosPeer((wire) => outgoing.push(decode(wire)));
+  new LizaController(agent).attach(peer);
+
+  peer.receive({ type: MessageType.SessionStart, sequence: 50, payload: Buffer.concat([Buffer.from([1]), Buffer.from("C:\\")]) });
+  await settle();
+  peer.receive({ type: MessageType.PromptChunk, sequence: 51, payload: Buffer.from("work") });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 51, payload: Buffer.alloc(0) });
+  await settle();
+  peer.receive({ type: MessageType.Cancel, sequence: 51, payload: Buffer.alloc(0) });
+  await settle();
+  await settle();
+
+  assert.ok(agent.aborted);
+  const errors = outgoing.filter((frame) => frame.type === MessageType.Error);
+  assert.equal(errors.length, 1, "exactly one error frame per cancelled turn");
+  assert.equal(errors[0]!.payload.toString("ascii"), "Cancelled");
+  const completes = outgoing.filter((frame) => frame.type === MessageType.Complete);
+  assert.equal(completes.length, 1);
+  assert.ok(outgoing.indexOf(errors[0]!) < outgoing.indexOf(completes[0]!));
+});
+
+test("disconnect aborts a running turn", async () => {
+  const agent = new FakeAgent();
+  agent.run = () => new Promise<void>(() => {});
+  const outgoing: Frame[] = [];
+  const peer = new DosPeer((wire) => outgoing.push(decode(wire)));
+  new LizaController(agent).attach(peer);
+
+  peer.receive({ type: MessageType.SessionStart, sequence: 60, payload: Buffer.concat([Buffer.from([1]), Buffer.from("C:\\")]) });
+  await settle();
+  peer.receive({ type: MessageType.PromptChunk, sequence: 61, payload: Buffer.from("work") });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 61, payload: Buffer.alloc(0) });
+  await settle();
+  peer.receive({ type: MessageType.Disconnect, sequence: 62, payload: Buffer.alloc(0) });
+  await settle();
+
+  assert.ok(agent.aborted, "a running turn must be aborted when the client disconnects");
 });

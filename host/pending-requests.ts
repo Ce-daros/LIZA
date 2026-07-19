@@ -13,6 +13,12 @@ export class PendingRequests<T extends PendingRequest> {
   constructor(private readonly timeoutMs: number) {}
 
   add(sequence: number, operation: string, request: T): void {
+    const existing = this.entries.get(sequence);
+    if (existing) {
+      this.entries.delete(sequence);
+      clearTimeout(existing.timer);
+      existing.request.reject(new Error(`${operation} was superseded by another request with sequence ${sequence}`));
+    }
     const timer = setTimeout(() => {
       this.entries.delete(sequence);
       request.reject(new Error(`${operation} timed out after ${this.timeoutMs} ms without a response from the DOS guest; it may be busy or stuck`));

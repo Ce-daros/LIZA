@@ -254,3 +254,41 @@ test("sends compact tool status updates to the DOS client", () => {
   ]);
   assert.equal(sent[0]!.payload.subarray(1).toString("ascii"), "TASK\0detail");
 });
+
+test("sendToolStatus truncates label and detail to the DOS display budget", () => {
+  const sent: Frame[] = [];
+  const peer = new DosPeer((wire) => sent.push(decodeWire(wire)));
+  peer.sendToolStatus(9, "start", "L".repeat(40), "D".repeat(200));
+
+  const payload = sent[0]!.payload;
+  assert.equal(payload[0], 0);
+  const separator = payload.indexOf(0, 1);
+  assert.equal(separator - 1, 15, "label must be capped at 15 bytes");
+  assert.equal(payload.length - separator - 1, 80, "detail must be capped at 80 bytes");
+});
+
+test("rejects a prompt whose chunks exceed the 64 KiB budget and drops the rest", async () => {
+  const sent: Frame[] = [];
+  const peer = new DosPeer((wire) => sent.push(decodeWire(wire)));
+  let prompted = false;
+  peer.setHandlers({
+    onStart: () => {},
+    onPrompt: () => { prompted = true; },
+    onCancel: () => {},
+    onNewSession: () => {},
+    onDisconnect: () => {},
+  });
+
+  const chunk = Buffer.alloc(1024, "a");
+  for (let i = 0; i < 64; i += 1) peer.receive({ type: MessageType.PromptChunk, sequence: 6, payload: chunk });
+  peer.receive({ type: MessageType.PromptChunk, sequence: 6, payload: chunk });
+  peer.receive({ type: MessageType.PromptChunk, sequence: 6, payload: chunk });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 6, payload: Buffer.alloc(0) });
+  await peer.whenInboundIdle();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.equal(prompted, false, "oversized prompt must not reach the handler");
+  const errors = sent.filter((frame) => frame.type === MessageType.Error);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0]!.payload.toString("ascii"), /65536/);
+});

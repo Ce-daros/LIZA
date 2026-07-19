@@ -1,5 +1,4 @@
 import type { ClientMode } from "./protocol.js";
-import type { ToolStatusState } from "./tool-status.js";
 
 export interface PeerHandlers {
   onStart(mode: ClientMode, cwd: string): void | Promise<void>;
@@ -34,5 +33,4 @@ export interface ListFilesResult {
 
 export type FrameWriter = (wire: Buffer) => void;
 
-export type ToolStatusWireState = Exclude<ToolStatusState, "fail"> | "fail";
 export type WriteFileMode = "overwrite" | "append";
