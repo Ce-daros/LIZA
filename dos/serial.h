@@ -1,6 +1,7 @@
 #ifndef LIZA_SERIAL_H
 #define LIZA_SERIAL_H
 
+unsigned long bios_ticks(void);
 int serial_open(void);
 int serial_can_read(void);
 unsigned char serial_read(void);

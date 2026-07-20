@@ -16,8 +16,6 @@
 
 extern int putenv(const char *);
 
-#define PROMPT_SIZE 512
-#define COMMAND_SIZE 128
 #define CAPTURE_FILE "LIZAOUT.$$$"
 
 static unsigned char wire[LIZA_MAX_PAYLOAD + 10];
@@ -138,12 +136,12 @@ static int connect_host(void)
 
 static int start_session(unsigned char mode)
 {
-    unsigned char payload[68];
-    char cwd[67];
+    unsigned char payload[1 + LIZA_MAX_PATH_BYTES];
+    char cwd[LIZA_MAX_PATH_BYTES];
     unsigned short sequence;
     unsigned short length;
 
-    if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
+    if (getcwd(cwd, sizeof(cwd)) == NULL) cwd[0] = '\0';
     payload[0] = mode;
     length = (unsigned short)strlen(cwd);
     memcpy(payload + 1, cwd, length);
@@ -201,9 +199,11 @@ static int execute_state_command(char *command)
 {
     char *argument;
     int drive;
+    int is_cd;
 
-    if (same_word(command, "CD") || same_word(command, "CHDIR")) {
-        argument = skip_spaces(command + (same_word(command, "CD") ? 2 : 5));
+    is_cd = same_word(command, "CD");
+    if (is_cd || same_word(command, "CHDIR")) {
+        argument = skip_spaces(command + (is_cd ? 2 : 5));
         if (*argument == '\0') {
             char cwd[80];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -282,12 +282,15 @@ static int execute_captured(char *command)
 
 static int return_command_result(unsigned short sequence, char *command)
 {
+    static const unsigned char lost_message[] =
+        "LIZA: unable to read captured output.\r\n";
     FILE *file;
-    unsigned char buffer[512];
-    unsigned char ending[71];
-    char cwd[67];
+    unsigned char buffer[LIZA_FILE_CHUNK_BYTES];
+    unsigned char ending[3 + LIZA_MAX_PATH_BYTES + 1];
+    char cwd[LIZA_MAX_PATH_BYTES];
     unsigned short count;
     int result;
+    int complete = 1;
 
     own_status_start("EXEC", command);
     result = execute_captured(command);
@@ -302,12 +305,19 @@ static int return_command_result(unsigned short sequence, char *command)
                 return 0;
             }
         fclose(file);
+    } else {
+        complete = 0;
+        if (!send_at(LIZA_EXEC_RESULT_CHUNK, sequence, lost_message,
+                     sizeof(lost_message) - 1)) {
+            remove(CAPTURE_FILE);
+            return 0;
+        }
     }
     remove(CAPTURE_FILE);
     ending[0] = result & 0xff;
     ending[1] = (result >> 8) & 0xff;
-    ending[2] = 1;
-    if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
+    ending[2] = (unsigned char)complete;
+    if (getcwd(cwd, sizeof(cwd)) == NULL) cwd[0] = '\0';
     count = (unsigned short)strlen(cwd);
     memcpy(ending + 3, cwd, count);
     return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 3);
@@ -344,9 +354,9 @@ static void copy_path(char *target, const unsigned char *source,
 
 static int handle_read_file(const liza_frame *request)
 {
-    char path[68];
+    char path[LIZA_MAX_PATH_BYTES + 1];
     FILE *file;
-    unsigned char buffer[512];
+    unsigned char buffer[LIZA_FILE_CHUNK_BYTES];
     unsigned char ending[7];
     unsigned long offset;
     unsigned long position;
@@ -356,7 +366,7 @@ static int handle_read_file(const liza_frame *request)
     unsigned short wanted;
     unsigned short status = 0;
 
-    if (request->length < 7 || request->length > 73) return 0;
+    if (request->length < 7 || request->length > 6 + LIZA_MAX_PATH_BYTES) return 0;
     offset = read_u32(request->payload);
     maximum = request->payload[4] | ((unsigned short)request->payload[5] << 8);
     copy_path(path, request->payload + 6, request->length - 6);
@@ -398,10 +408,10 @@ static int handle_read_file(const liza_frame *request)
 
 static int handle_write_start(const liza_frame *request)
 {
-    char path[68];
+    char path[LIZA_MAX_PATH_BYTES + 1];
     const char *mode;
 
-    if (request->length < 2 || request->length > 68) return 0;
+    if (request->length < 2 || request->length > LIZA_MAX_PATH_BYTES + 1) return 0;
     if (active_write_file != NULL) fclose(active_write_file);
     active_write_file = NULL;
     active_write_sequence = request->sequence;
@@ -426,7 +436,7 @@ static int handle_write_chunk(const liza_frame *request)
     count = (unsigned short)fwrite(request->payload, 1, request->length,
                                   active_write_file);
     active_write_bytes += count;
-    if (count != request->length) active_write_status = errno ? errno : 5;
+    if (count != request->length) active_write_status = errno;
     return 1;
 }
 
@@ -436,7 +446,7 @@ static int handle_write_end(const liza_frame *request)
     if (request->sequence != active_write_sequence) return 0;
     if (active_write_file != NULL) {
         if (fclose(active_write_file) != 0 && active_write_status == 0)
-            active_write_status = errno ? errno : 5;
+            active_write_status = errno;
         active_write_file = NULL;
     }
     write_u16(result, active_write_status);
@@ -448,9 +458,9 @@ static int handle_write_end(const liza_frame *request)
 
 static int handle_list_files(const liza_frame *request)
 {
-    char directory[68];
-    char pattern[68];
-    char specification[138];
+    char directory[LIZA_MAX_PATH_BYTES + 1];
+    char pattern[LIZA_MAX_PATH_BYTES + 1];
+    char specification[2 * LIZA_MAX_PATH_BYTES + 4];
     char line[96];
     struct find_t found;
     unsigned char ending[5];
@@ -472,8 +482,8 @@ static int handle_list_files(const liza_frame *request)
     limit = request->payload[2];
     directory_length = request->payload[3];
     if (limit == 0 || limit > 50 || directory_length == 0 ||
-        4 + directory_length >= request->length || directory_length > 67 ||
-        request->length - 4 - directory_length > 67) return 0;
+        4 + directory_length >= request->length || directory_length > LIZA_MAX_PATH_BYTES ||
+        request->length - 4 - directory_length > LIZA_MAX_PATH_BYTES) return 0;
     copy_path(directory, request->payload + 4, directory_length);
     copy_path(pattern, request->payload + 4 + directory_length,
               request->length - 4 - directory_length);
@@ -564,8 +574,8 @@ static int reject_long_command(unsigned short sequence)
 {
     static const unsigned char message[] =
         "Command is too long; refused to execute.\r\n";
-    unsigned char ending[71];
-    char cwd[67];
+    unsigned char ending[3 + LIZA_MAX_PATH_BYTES + 1];
+    char cwd[LIZA_MAX_PATH_BYTES];
     unsigned short count;
 
     if (!send_at(LIZA_EXEC_RESULT_CHUNK, sequence, message,
@@ -573,7 +583,7 @@ static int reject_long_command(unsigned short sequence)
     ending[0] = 1;
     ending[1] = 0;
     ending[2] = 1;
-    if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
+    if (getcwd(cwd, sizeof(cwd)) == NULL) cwd[0] = '\0';
     count = (unsigned short)strlen(cwd);
     memcpy(ending + 3, cwd, count);
     return send_at(LIZA_EXEC_RESULT_END, sequence, ending, count + 3);
@@ -585,7 +595,7 @@ static int run_turn(const char *prompt)
     unsigned short length = (unsigned short)strlen(prompt);
     unsigned short offset = 0;
     unsigned short count;
-    char command[COMMAND_SIZE];
+    char command[LIZA_COMMAND_SIZE];
     int cancelled = 0;
 
     while (offset < length) {
@@ -607,7 +617,7 @@ static int run_turn(const char *prompt)
                 display_styled(frame.payload[0], frame.payload + 1,
                                frame.length - 1);
             } else if (frame.type == LIZA_EXEC_REQUEST) {
-                if (frame.length >= sizeof(command)) {
+                if (frame.length > 126) {
                     if (!reject_long_command(frame.sequence)) return 0;
                 } else {
                     memcpy(command, frame.payload, frame.length);
@@ -701,14 +711,14 @@ static int read_prompt(char *prompt, unsigned size)
 
 static int interactive(void)
 {
-    char prompt[PROMPT_SIZE];
+    char prompt[LIZA_PROMPT_SIZE];
     char cwd[80];
     unsigned short sequence;
 
     display_styled(0x0b, (const unsigned char *)"LIZA 0.1", 8);
     terminal_write("  /EXIT /NEW /THEME [default|neon]\n");
     for (;;) {
-        if (getcwd(cwd, sizeof(cwd)) == NULL) strcpy(cwd, "?");
+        if (getcwd(cwd, sizeof(cwd)) == NULL) cwd[0] = '\0';
         terminal_write("\n");
         if (neon_theme_active) {
             unsigned char c1 = neon_next_color();
@@ -763,7 +773,7 @@ static int interactive(void)
 
 int main(int argc, char **argv)
 {
-    char prompt[PROMPT_SIZE];
+    char prompt[LIZA_PROMPT_SIZE];
     unsigned char mode = argc > 1 ? LIZA_MODE_ONE_SHOT : LIZA_MODE_INTERACTIVE;
     int ok;
 
@@ -781,6 +791,7 @@ int main(int argc, char **argv)
     terminal_write("Connecting to LIZA host...");
     if (!connect_host() || !start_session(mode)) {
         terminal_write(" failed.\nCheck that the Windows host and 86Box COM1 pipe are running.\n");
+        terminal_restore_theme();
         return 1;
     }
     begin_host_wait();

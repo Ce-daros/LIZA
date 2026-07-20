@@ -4,7 +4,7 @@
 
 static unsigned short com_base;
 
-static unsigned long bios_ticks(void)
+unsigned long bios_ticks(void)
 {
     volatile unsigned long __far *ticks;
     ticks = (volatile unsigned long __far *)MK_FP(0x40, 0x6c);

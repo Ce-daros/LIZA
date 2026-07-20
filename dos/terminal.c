@@ -2,10 +2,11 @@
 #include <dos.h>
 #include <i86.h>
 #include <string.h>
+#include "serial.h"
 #include "terminal.h"
 
-#define DISPLAY_HEIGHT 25
-#define HISTORY_ROWS 150
+#define DISPLAY_HEIGHT LIZA_DISPLAY_HEIGHT
+#define HISTORY_ROWS LIZA_HISTORY_ROWS
 
 static int last_output = '\n';
 static unsigned char terminal_attribute;
@@ -22,16 +23,6 @@ static unsigned char terminal_status_column;
 static unsigned char terminal_status_prefix_width;
 static unsigned char terminal_status_spinner;
 static unsigned long terminal_status_tick;
-
-static unsigned long bios_ticks(void)
-{
-    union REGS input;
-    union REGS output;
-
-    input.h.ah = 0x00;
-    int86(0x1a, &input, &output);
-    return ((unsigned long)output.x.cx << 16) | output.x.dx;
-}
 
 static void terminal_set_cursor(unsigned char row, unsigned char column)
 {
@@ -269,9 +260,9 @@ void terminal_handle_key(int key)
 
 void terminal_reset(void)
 {
-    unsigned row;
     terminal_color(0x07);
-    for (row = 0; row < HISTORY_ROWS; ++row) terminal_clear_row(row);
+    memset(terminal_text, ' ', sizeof(terminal_text));
+    memset(terminal_colors, terminal_attribute, sizeof(terminal_colors));
     terminal_cursor_row = 0;
     terminal_cursor_column = 0;
     terminal_view_row = 0;
@@ -285,33 +276,17 @@ void terminal_apply_default_theme(void)
     terminal_attribute = 0x07;
 }
 
-static unsigned char neon_colors[] = {
-    0x0b,  /* bright cyan */
-    0x0d,  /* bright magenta */
-    0x0e,  /* bright yellow */
-    0x0a,  /* bright green */
-    0x0c,  /* bright red */
-    0x0f,  /* bright white */
-};
-static int neon_color_index = 0;
-
 void terminal_apply_neon_theme(void)
 {
     terminal_color(0x0b);
     terminal_attribute = 0x0b;
-    neon_color_index = 0;
-}
-
-unsigned char terminal_neon_color(void)
-{
-    unsigned char color = neon_colors[neon_color_index];
-    neon_color_index = (neon_color_index + 1) % (sizeof(neon_colors) / sizeof(neon_colors[0]));
-    return color;
 }
 
 void terminal_restore_theme(void)
 {
     terminal_attribute = terminal_original_attribute;
+    terminal_reset();
+    terminal_redraw();
 }
 
 unsigned char terminal_color(unsigned char foreground)
