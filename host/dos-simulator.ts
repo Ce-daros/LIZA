@@ -1,5 +1,11 @@
-import { ClientMode, encodeExitCode, Frame, FrameDecoder, MessageType, encodeFrame } from "./protocol.js";
-import { toolstatuslabelbytes, toolstatusdetailbytes } from "./protocol.generated.js";
+import { ClientMode, Frame, FrameDecoder, MessageType, encodeFrame } from "./protocol.js";
+import { toolStatusLabelBytes, toolStatusDetailBytes } from "./protocol.generated.js";
+
+export function encodeExitCode(exitCode: number): Buffer {
+  const payload = Buffer.alloc(2);
+  payload.writeInt16LE(exitCode);
+  return payload;
+}
 
 export interface LizaDosSimulatorOptions {
   labelBytes?: number;
@@ -73,8 +79,8 @@ export interface ParsedAssistant {
   text: string;
 }
 
-const DEFAULT_LABEL_BYTES = toolstatuslabelbytes;
-const DEFAULT_DETAIL_BYTES = toolstatusdetailbytes;
+const DEFAULT_LABEL_BYTES = toolStatusLabelBytes;
+const DEFAULT_DETAIL_BYTES = toolStatusDetailBytes;
 
 export class LizaDosSimulator {
   readonly toolStatuses: ParsedToolStatus[] = [];

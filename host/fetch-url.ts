@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { isTavilyMisconfigured, type TavilyClient } from "./tavily-client.js";
-import { maxcontentchars } from "./protocol.generated.js";
+import { maxContentChars } from "./protocol.generated.js";
 
 export function createFetchUrlTool(client: TavilyClient) {
   return defineTool({
@@ -10,7 +10,7 @@ export function createFetchUrlTool(client: TavilyClient) {
     description: "Fetch a web page URL with Tavily Extract and return its readable content as Markdown.",
     parameters: Type.Object({
       url: Type.String({ minLength: 1, maxLength: 2048 }),
-      max_chars: Type.Optional(Type.Integer({ minimum: 100, maximum: maxcontentchars, default: maxcontentchars })),
+      max_chars: Type.Optional(Type.Integer({ minimum: 100, maximum: maxContentChars, default: maxContentChars })),
     }, { additionalProperties: false }),
     executionMode: "sequential",
     execute: async (_toolCallId, params) => {
@@ -35,7 +35,7 @@ export function createFetchUrlTool(client: TavilyClient) {
           throw new Error(`Tavily extract returned no content for ${params.url}${failure ? `: ${failure.error}` : ""}`);
         }
 
-        const limit = params.max_chars ?? maxcontentchars;
+        const limit = params.max_chars ?? maxContentChars;
         const body = result.rawContent.length > limit
           ? `${result.rawContent.slice(0, limit)}\n\n[truncated]`
           : result.rawContent;

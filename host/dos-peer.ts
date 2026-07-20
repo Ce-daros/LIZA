@@ -14,12 +14,12 @@ import {
 } from "./dos-peer-types.js";
 import type { ToolStatusState } from "./tool-status.js";
 import {
-  filechunkbytes,
-  styledchunkbytes,
-  errormessagebytes,
-  toolstatuslabelbytes,
-  toolstatusdetailbytes,
-  maxpromptbytes,
+  fileChunkBytes,
+  styledChunkBytes,
+  errorMessageBytes,
+  toolStatusLabelBytes,
+  toolStatusDetailBytes,
+  maxPromptBytes,
 } from "./protocol.generated.js";
 
 interface PendingExecution extends PendingRequest {
@@ -110,7 +110,7 @@ export class DosPeer {
     return new Promise<WriteFileResult>((resolve, reject) => {
       this.fileOperations.add(sequence, "DOS file operation", { kind: "write", resolve, reject });
       this.sendFrame(MessageType.WriteFileStart, sequence, start);
-      for (const chunk of splitPayload(bytes, filechunkbytes)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
+      for (const chunk of splitPayload(bytes, fileChunkBytes)) this.sendFrame(MessageType.WriteFileChunk, sequence, chunk);
       this.sendFrame(MessageType.WriteFileEnd, sequence, Buffer.alloc(0));
     });
   }
@@ -136,7 +136,7 @@ export class DosPeer {
 
   sendStyledAssistant(sequence: number, style: TextStyle, text: string): void {
     const ascii = Buffer.from(toDosAscii(text), "ascii");
-    for (const chunk of splitPayload(ascii, styledchunkbytes)) {
+    for (const chunk of splitPayload(ascii, styledChunkBytes)) {
       this.sendFrame(MessageType.StyledAssistantChunk, sequence, Buffer.concat([Buffer.from([style]), chunk]));
     }
   }
@@ -144,9 +144,9 @@ export class DosPeer {
   sendToolStatus(sequence: number, state: ToolStatusState, label: string, detail = ""): void {
     const stateByte = state === "start" ? 0 : state === "ok" ? 1 : 2;
     const text = Buffer.concat([
-      Buffer.from(toDosAscii(label).slice(0, toolstatuslabelbytes), "ascii"),
+      Buffer.from(toDosAscii(label).slice(0, toolStatusLabelBytes), "ascii"),
       Buffer.from([0]),
-      Buffer.from(toDosAscii(detail).slice(0, toolstatusdetailbytes), "ascii"),
+      Buffer.from(toDosAscii(detail).slice(0, toolStatusDetailBytes), "ascii"),
     ]);
     this.sendFrame(MessageType.ToolStatus, sequence, Buffer.concat([Buffer.from([stateByte]), text]));
   }
@@ -160,7 +160,7 @@ export class DosPeer {
   }
 
   sendError(sequence: number, message: string): void {
-    const payload = Buffer.from(toDosAscii(message).slice(0, errormessagebytes), "ascii");
+    const payload = Buffer.from(toDosAscii(message).slice(0, errorMessageBytes), "ascii");
     this.sendFrame(MessageType.Error, sequence, payload);
   }
 
@@ -241,10 +241,10 @@ export class DosPeer {
     if (this.promptOverflow.has(frame.sequence)) return;
     const chunks = this.promptChunks.get(frame.sequence) ?? [];
     const total = chunks.reduce((sum, chunk) => sum + chunk.length, frame.payload.length);
-    if (total > maxpromptbytes) {
+    if (total > maxPromptBytes) {
       this.promptChunks.delete(frame.sequence);
       this.promptOverflow.add(frame.sequence);
-      this.sendError(frame.sequence, `Prompt exceeds ${maxpromptbytes} bytes`);
+      this.sendError(frame.sequence, `Prompt exceeds ${maxPromptBytes} bytes`);
       return;
     }
     chunks.push(Buffer.from(frame.payload));
@@ -277,10 +277,6 @@ export class DosPeer {
     const hasFlag = frame.payload.length >= 3 && (frame.payload[2] === 0 || frame.payload[2] === 1);
     const cwdStart = hasFlag ? 3 : 2;
     const cwd = frame.payload.subarray(cwdStart).toString("ascii");
-    if (cwd.length === 0) {
-      pending.reject(new Error("DOS command result did not include a working directory"));
-      return;
-    }
     pending.resolve({
       output: Buffer.concat(pending.chunks).toString("ascii"),
       exitCode: decodeExitCode(frame.payload),

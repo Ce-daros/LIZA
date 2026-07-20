@@ -3,7 +3,8 @@ import test from "node:test";
 import { LizaController } from "./controller.js";
 import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
 import { DosPeer } from "./dos-peer.js";
-import { encodeExitCode, Frame, FrameDecoder, MessageType } from "./protocol.js";
+import { Frame, FrameDecoder, MessageType } from "./protocol.js";
+import { encodeExitCode } from "./dos-simulator.js";
 
 class FakeAgent implements AgentDriver {
   port: DosSessionPort | undefined;

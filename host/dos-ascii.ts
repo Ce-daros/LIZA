@@ -1,4 +1,4 @@
-import { maxpathbytes } from "./protocol.generated.js";
+import { maxPathBytes } from "./protocol.generated.js";
 
 const TRANSLITERATIONS: Record<string, string> = {
   "\u00a0": " ",
@@ -35,8 +35,8 @@ export function toDosAscii(text: string): string {
 
 export function encodeDosPath(path: string): Buffer {
   const encoded = Buffer.from(toDosAscii(path), "ascii");
-  if (encoded.length < 1 || encoded.length > maxpathbytes) {
-    throw new RangeError(`DOS path must contain 1 to ${maxpathbytes} bytes`);
+  if (encoded.length < 1 || encoded.length > maxPathBytes) {
+    throw new RangeError(`DOS path must contain 1 to ${maxPathBytes} bytes`);
   }
   return encoded;
 }

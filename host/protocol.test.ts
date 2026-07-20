@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { decodeExitCode, encodeExitCode, encodeFrame, FrameDecoder, MessageType, splitPayload } from "./protocol.js";
+import { decodeExitCode, encodeFrame, FrameDecoder, MessageType, splitPayload } from "./protocol.js";
+import { encodeExitCode } from "./dos-simulator.js";
 
 const helloHex = "4c5a010101000c004c495a412d444f532f302e314068";
 const textHex = "4c5a01030200050068656c6c6f2bc1";

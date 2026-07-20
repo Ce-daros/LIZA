@@ -29,12 +29,6 @@ export function splitPayload(payload: Uint8Array, maximum = MAX_PAYLOAD): Buffer
   return chunks;
 }
 
-export function encodeExitCode(exitCode: number): Buffer {
-  const payload = Buffer.alloc(2);
-  payload.writeInt16LE(exitCode);
-  return payload;
-}
-
 export function decodeExitCode(payload: Uint8Array): number {
   if (payload.length < 2) throw new RangeError("command-result payload must contain an exit code");
   return Buffer.from(payload).readInt16LE();

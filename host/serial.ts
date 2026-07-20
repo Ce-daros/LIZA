@@ -1,6 +1,6 @@
 import { SerialPort } from "serialport";
 import type { WireEndpoint } from "./pipe-server.js";
-import { defaultreconnectdelayms } from "./protocol.generated.js";
+import { defaultReconnectDelayMs } from "./protocol.generated.js";
 import { logger } from "./logger.js";
 
 export interface SerialConnectorOptions {
@@ -54,7 +54,7 @@ export class SerialConnector {
 
   private scheduleReconnect(attach: (port: WireEndpoint, label: string) => void): void {
     if (this.reconnectTimer) return;
-    const delay = this.options.reconnectDelayMs ?? defaultreconnectdelayms;
+    const delay = this.options.reconnectDelayMs ?? defaultReconnectDelayMs;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       this.open(attach);

@@ -1,9 +1,5 @@
 import { encodeDosPath } from "./dos-ascii.js";
 
-export interface ExecRequestPayload {
-  command: string;
-}
-
 export function buildExecRequest(command: string): Buffer {
   return Buffer.from(command, "ascii");
 }

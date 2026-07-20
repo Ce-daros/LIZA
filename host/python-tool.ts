@@ -4,7 +4,7 @@ import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { execa } from "execa";
-import { maxoutputchars } from "./protocol.generated.js";
+import { maxOutputChars } from "./protocol.generated.js";
 
 interface PythonResult {
   stdout: string;
@@ -20,7 +20,8 @@ export function createPythonTool(python = process.env.LIZA_PYTHON ?? "python") {
     description:
       "Run Python 3 source on the Windows host (never on DOS) and return stdout, stderr, and the exit code. " +
       "NumPy, SciPy, pandas, Matplotlib, and SymPy are installed. Code runs in a fresh temporary directory " +
-      "with only the minimal environment needed to run the interpreter; use it for computation, not for touching host files.",
+      "with a minimal environment: API keys and other sensitive host variables are not passed through, only the " +
+      "system variables the interpreter needs; use it for computation, not for touching host files.",
     parameters: Type.Object({
       source: Type.String({ minLength: 1, maxLength: 20000 }),
       timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 120, default: 30 })),
@@ -82,5 +83,5 @@ function formatResult(result: PythonResult, timeoutSeconds: number): string {
 }
 
 function truncate(text: string): string {
-  return text.length > maxoutputchars ? `${text.slice(0, maxoutputchars)}\n\n[truncated]` : text;
+  return text.length > maxOutputChars ? `${text.slice(0, maxOutputChars)}\n\n[truncated]` : text;
 }

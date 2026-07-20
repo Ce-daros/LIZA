@@ -62,11 +62,22 @@ function pascalCase(name) {
 }
 
 function camelCase(name) {
-  return name.toLowerCase().replace(/_([a-z0-9])/g, (_match, letter) => letter.toUpperCase());
+  return words(name).map((word, index) => (index === 0 ? word.toLowerCase() : capitalize(word))).join("");
 }
 
 function snakeCase(name) {
-  return name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  return words(name).map((word) => word.toLowerCase()).join("_");
+}
+
+function words(name) {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean);
+}
+
+function capitalize(word) {
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
 }
 
 function hex(value) {
