@@ -81,7 +81,7 @@ export function createLizaToolRegistry(port: DosSessionPort): LizaToolRegistry {
     { tool: listFiles, instruction: "Enumerate DOS directories in bounded pages using 8.3 wildcard patterns." },
     {
       tool: runPython,
-      instruction: "Run Python 3 on the Windows transport host in a fresh temporary directory with no host environment variables. Use it for calculations and analysis; never claim it ran on DOS. Do not call plt.show().",
+      instruction: "Run Python 3 on the Windows transport host in a fresh temporary directory with a minimal environment (API keys and other sensitive host variables are not passed through). Use it for calculations and analysis; never claim it ran on DOS. Do not call plt.show().",
       status: {
         label: "PYTHON",
         failed: (result) => {
