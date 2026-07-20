@@ -49,7 +49,7 @@ export function loadLizaModels(configPath: string): LizaModels {
       }
     }
   }
-  if (!defaultModel) defaultModel = models[0];
-  if (!defaultModel) throw new Error(`No aliased models found in ${configPath}`);
+  if (models.length === 0) throw new Error(`No aliased models found in ${configPath}`);
+  if (!defaultModel) throw new Error(`No default model in ${configPath}: mark one model with "default": true`);
   return { models, defaultModel };
 }

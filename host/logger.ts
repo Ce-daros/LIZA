@@ -1,4 +1,4 @@
-type LogLevel = "debug" | "info" | "warn" | "error";
+type LogLevel = "info" | "warn" | "error";
 
 interface LogEntry {
   level: LogLevel;
@@ -8,19 +8,7 @@ interface LogEntry {
 }
 
 class Logger {
-  private minLevel: LogLevel = "info";
-
-  setLevel(level: LogLevel): void {
-    this.minLevel = level;
-  }
-
-  private shouldLog(level: LogLevel): boolean {
-    const levels: LogLevel[] = ["debug", "info", "warn", "error"];
-    return levels.indexOf(level) >= levels.indexOf(this.minLevel);
-  }
-
   private log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
-    if (!this.shouldLog(level)) return;
     const entry: LogEntry = {
       level,
       message,
@@ -33,10 +21,6 @@ class Logger {
     } else {
       console.log(output);
     }
-  }
-
-  debug(message: string, meta?: Record<string, unknown>): void {
-    this.log("debug", message, meta);
   }
 
   info(message: string, meta?: Record<string, unknown>): void {

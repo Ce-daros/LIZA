@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLizaToolRegistry } from "../host/tool-registry.js";
-import { inertPort } from "../host/test-helpers/inert-port.js";
+import { inertPort } from "../host/inert-port.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const protocol = JSON.parse(await readFile(path.join(root, "protocol", "schema.json"), "utf8")) as ProtocolSchema;

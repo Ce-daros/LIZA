@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createLizaToolRegistry } from "./tool-registry.js";
-import { inertPort } from "./test-helpers/inert-port.js";
+import { inertPort } from "./inert-port.js";
 
 test("completes search and fetch status without re-reading start arguments", () => {
   const registry = createLizaToolRegistry(inertPort());

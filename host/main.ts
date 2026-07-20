@@ -1,7 +1,7 @@
 import { LizaController } from "./controller.js";
 import { DosPeer } from "./dos-peer.js";
 import { PiDriver } from "./pi-driver.js";
-import { PipeServer } from "./pipe-server.js";
+import { PipeServer, type WireEndpoint } from "./pipe-server.js";
 import { SerialConnector } from "./serial.js";
 import { FrameDecoder } from "./protocol.js";
 import { logger } from "./logger.js";
@@ -15,17 +15,17 @@ async function main(): Promise<void> {
   const controller = new LizaController(driver);
   let activePeer: DosPeer | undefined;
 
-  function attachEndpoint(endpoint: { write(data: Buffer): unknown; on(event: string, listener: (...args: unknown[]) => void): unknown }, label: string): DosPeer {
+  function attachEndpoint(endpoint: WireEndpoint, label: string): DosPeer {
     const decoder = new FrameDecoder();
     activePeer?.close();
     const peer = new DosPeer((wire) => endpoint.write(wire));
     activePeer = peer;
     controller.attach(peer);
 
-    endpoint.on("data", (chunk: unknown) => {
-      for (const frame of decoder.push(chunk as Buffer)) peer.receive(frame);
+    endpoint.on("data", (chunk) => {
+      for (const frame of decoder.push(chunk)) peer.receive(frame);
     });
-    endpoint.on("error", (error: unknown) => logger.error(`[${label}] ${(error as Error).message}`));
+    endpoint.on("error", (error) => logger.error(`[${label}] ${error.message}`));
     endpoint.on("close", () => {
       peer.close();
       if (activePeer === peer) activePeer = undefined;

@@ -45,10 +45,13 @@ const RETRY_OPTIONS = {
   },
 };
 
-export function createTavilyClient(): TavilyClient {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) throw new TavilyMisconfiguredError("TAVILY_API_KEY is not configured");
-  const tvly = tavily({ apiKey });
+export function createTavilyClient(sdk?: ReturnType<typeof tavily>): TavilyClient {
+  let tvly = sdk;
+  if (!tvly) {
+    const apiKey = process.env.TAVILY_API_KEY;
+    if (!apiKey) throw new TavilyMisconfiguredError("TAVILY_API_KEY is not configured");
+    tvly = tavily({ apiKey });
+  }
   return {
     search: (args) => pRetry(() => invokeSearch(tvly, args), RETRY_OPTIONS),
     extract: (args) => pRetry(() => invokeExtract(tvly, args), RETRY_OPTIONS),
@@ -132,5 +135,3 @@ export class TavilyClientError extends TavilyError {
 export function isTavilyMisconfigured(error: unknown): error is TavilyMisconfiguredError {
   return error instanceof TavilyMisconfiguredError;
 }
-
-export { mapTavilyError };

@@ -28,15 +28,14 @@ test("loads aliased models with default from explicit marker", () => {
   rmSync(path.dirname(file), { recursive: true });
 });
 
-test("falls back to the first aliased model when no default marker is present", () => {
+test("throws when no model is marked as default", () => {
   const file = writeConfig({
     providers: {
       openrouter: { models: [{ id: "x/y", alias: "first", name: "First" }] },
       mimo: { models: [{ id: "z", alias: "second", name: "Second" }] },
     },
   });
-  const result = loadLizaModels(file);
-  assert.equal(result.defaultModel.alias, "first");
+  assert.throws(() => loadLizaModels(file), /No default model/);
   rmSync(path.dirname(file), { recursive: true });
 });
 
@@ -45,7 +44,7 @@ test("ignores models without an alias field", () => {
     providers: {
       mimo: {
         models: [
-          { id: "mimo-v2.5-pro", alias: "mimo", name: "MiMo" },
+          { id: "mimo-v2.5-pro", alias: "mimo", default: true, name: "MiMo" },
           { id: "internal-only", name: "NoAlias" },
         ],
       },
