@@ -20,6 +20,7 @@ export class PiDriver implements AgentDriver {
   private unsubscribe: (() => void) | undefined;
   private textSink: ((text: string) => void) | undefined;
   private port: DosSessionPort | undefined;
+  private sessionTimestamp: string | undefined;
 
   private constructor(
     private readonly cwd: string,
@@ -75,9 +76,13 @@ export class PiDriver implements AgentDriver {
   async run(prompt: string, onText: (text: string) => void): Promise<void> {
     if (!this.session) throw new Error("Pi session is not initialized");
     this.textSink = onText;
-    const timestampedPrompt = `Host local date and time: ${new Date().toString()}\n\n${prompt}`;
+    // The timestamp is captured once per session and injected only with the
+    // first user message, so later turns share a stable prompt prefix and can
+    // reuse the provider's prefix cache.
+    const prefix = this.sessionTimestamp ? `Host local date and time: ${this.sessionTimestamp}\n\n` : "";
+    this.sessionTimestamp = undefined;
     try {
-      await this.session.prompt(timestampedPrompt, { source: "interactive" });
+      await this.session.prompt(prefix + prompt, { source: "interactive" });
     } finally {
       this.textSink = undefined;
     }
@@ -98,6 +103,7 @@ export class PiDriver implements AgentDriver {
   }
 
   private async open(sessionManager: SessionManager): Promise<void> {
+    this.sessionTimestamp = new Date().toString();
     const authStorage = AuthStorage.inMemory();
     const modelRegistry = ModelRegistry.create(authStorage, this.modelsPath);
     const modelError = modelRegistry.getError();
@@ -162,6 +168,7 @@ export class PiDriver implements AgentDriver {
     this.unsubscribe = undefined;
     this.session?.dispose();
     this.session = undefined;
+    this.sessionTimestamp = undefined;
     this.modelRegistry = undefined;
     this.lizaModels = [];
   }

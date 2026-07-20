@@ -39,7 +39,6 @@ configuration uses legacy serial passthrough in client mode:
 ```ini
 [Ports (COM & LPT)]
 serial1_passthrough_enabled = 1
-serial2_enabled = 0
 
 [Serial Passthrough Device #1]
 mode = 1

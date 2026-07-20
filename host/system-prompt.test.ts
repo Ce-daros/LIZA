@@ -34,7 +34,7 @@ test("buildDosContextPrompt reports unknown drive for non-DOS paths", () => {
 test("buildDosContextPrompt locks DOS contract text and host-clock disclaimer", () => {
   const prompt = buildDosContextPrompt({ mode: ClientMode.OneShot, cwd: "C:\\" });
   assert.match(prompt, /DOS environment for this invocation:/);
-  assert.match(prompt, /Host local date and time: \(available on Windows host; not shown to model to preserve prefix cache\)/);
+  assert.match(prompt, /Host local date and time: provided once, prepended to the first user message of the session \(kept stable afterwards to preserve the prefix cache\)/);
   assert.match(prompt, /Shell: COMMAND\.COM-compatible MS-DOS 6\.22 shell/);
   assert.match(prompt, /Display: 80x25 VGA text mode/);
   assert.match(prompt, /Maximum command line: 126 bytes/);
