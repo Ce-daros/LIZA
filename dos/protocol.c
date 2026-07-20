@@ -34,6 +34,31 @@ unsigned short liza_encode(unsigned char *output, unsigned char type,
     return length + 10;
 }
 
+/* After rejecting a candidate frame, resume scanning one byte after its
+   sync: the bytes already buffered may themselves contain a new sync pair.
+   Keep any such candidate (and the bytes after it) for further decoding. */
+static void decoder_resync(liza_decoder *decoder)
+{
+    unsigned short i;
+
+    for (i = 0; i + 1 < decoder->used; ++i) {
+        if (decoder->data[i] == LIZA_SYNC_0 &&
+            decoder->data[i + 1] == LIZA_SYNC_1) {
+            memmove(decoder->data, decoder->data + i + 2,
+                    decoder->used - i - 2);
+            decoder->used = (unsigned short)(decoder->used - i - 2);
+            decoder->expected = 0;
+            decoder->state = 2;
+            return;
+        }
+    }
+    /* No full pair; a trailing sync byte stays a partial candidate. */
+    decoder->state = (decoder->used != 0 &&
+                      decoder->data[decoder->used - 1] == LIZA_SYNC_0) ? 1 : 0;
+    decoder->used = 0;
+    decoder->expected = 0;
+}
+
 int liza_decode_byte(liza_decoder *decoder, unsigned char byte, liza_frame *frame)
 {
     unsigned short length;
@@ -55,29 +80,36 @@ int liza_decode_byte(liza_decoder *decoder, unsigned char byte, liza_frame *fram
     }
 
     decoder->data[decoder->used++] = byte;
-    if (decoder->used == 6) {
-        length = decoder->data[4] | ((unsigned short)decoder->data[5] << 8);
-        if (decoder->data[0] != LIZA_VERSION || length > LIZA_MAX_PAYLOAD) {
-            decoder->state = byte == LIZA_SYNC_0 ? 1 : 0;
-            decoder->used = 0;
-            return 0;
+    for (;;) {
+        if (decoder->expected == 0) {
+            if (decoder->used < 6) return 0;
+            length = decoder->data[4] | ((unsigned short)decoder->data[5] << 8);
+            if (decoder->data[0] != LIZA_VERSION || length > LIZA_MAX_PAYLOAD) {
+                decoder_resync(decoder);
+                if (decoder->state != 2) return 0;
+                continue;
+            }
+            decoder->expected = length + 8;
         }
-        decoder->expected = length + 8;
+        if (decoder->used < decoder->expected) return 0;
+        length = decoder->expected - 8;
+        expected = decoder->data[decoder->expected - 2] |
+                   ((unsigned short)decoder->data[decoder->expected - 1] << 8);
+        if (expected != liza_crc16(decoder->data, length + 6)) {
+            decoder_resync(decoder);
+            if (decoder->state != 2) return 0;
+            continue;
+        }
+        break;
     }
-    if (decoder->expected == 0 || decoder->used < decoder->expected) return 0;
 
-    length = decoder->expected - 8;
-    expected = decoder->data[decoder->expected - 2] |
-               ((unsigned short)decoder->data[decoder->expected - 1] << 8);
     decoder->state = 0;
     decoder->used = 0;
     decoder->expected = 0;
-    if (expected != liza_crc16(decoder->data, length + 6)) return 0;
-
+    frame->length = length;
     frame->type = decoder->data[1];
     frame->sequence = decoder->data[2] |
                       ((unsigned short)decoder->data[3] << 8);
-    frame->length = length;
     memcpy(frame->payload, decoder->data + 6, length);
     return 1;
 }
