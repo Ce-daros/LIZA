@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DosPeer } from "./dos-peer.js";
 import { LizaDosSimulator } from "./dos-simulator.js";
-import { ClientMode, encodeFrame, Frame, FrameDecoder, MessageType, TextStyle } from "./protocol.js";
+import { ClientMode, encodeFrame, FrameDecoder, MessageType, TextStyle } from "./protocol.js";
 
 function bindHostPeer(simulator: LizaDosSimulator): DosPeer {
   return new DosPeer((wire) => { simulator.send(wire); });
@@ -14,10 +14,6 @@ function sendFramesTo(simulator: LizaDosSimulator, peer: DosPeer, wires: Buffer[
     const payload = wire.subarray(8, wire.length - 2);
     peer.receive({ type: wire[3] as MessageType, sequence, payload });
   }
-}
-
-function encodeRaw(frame: Frame): Buffer {
-  return encodeFrame(frame);
 }
 
 test("tool status: parses state byte, NUL-separated label and detail exactly as dos/liza.c does", () => {
@@ -152,7 +148,7 @@ test("prompts: chunks reassemble in sequence order regardless of arrival order",
   ];
   for (const frame of frames) {
     peer.receive(frame);
-    simulator.send(encodeRaw(frame));
+    simulator.send(encodeFrame(frame));
   }
 
   assert.deepEqual(simulator.prompts, [{ sequence: 50, text: "find the largest file" }]);

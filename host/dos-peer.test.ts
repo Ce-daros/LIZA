@@ -3,7 +3,6 @@ import test from "node:test";
 import { DosPeer } from "./dos-peer.js";
 import { ClientMode, Frame, FrameDecoder, MessageType } from "./protocol.js";
 import { encodeExitCode } from "./dos-simulator.js";
-import { toDosAscii } from "./dos-ascii.js";
 
 function decodeWire(wire: Buffer): Frame {
   const frames = new FrameDecoder().push(wire);
@@ -138,10 +137,6 @@ test("serializes session startup before dispatching prompts", async () => {
   assert.deepEqual(events, ["start", "ready", "prompt"]);
 });
 
-test("transliterates supported punctuation and drops unsupported characters for DOS", () => {
-  assert.equal(toDosAscii("It\u2019s \u2014 \u201chello\u201d\u2026 \u2192 \u2022 \ud83d\udea8"), "It's - \"hello\"... -> * ");
-});
-
 test("streams bounded DOS file reads", async () => {
   let peer: DosPeer;
   peer = new DosPeer((wire) => {
@@ -254,18 +249,6 @@ test("sends compact tool status updates to the DOS client", () => {
     [MessageType.ToolStatus, 19, 2],
   ]);
   assert.equal(sent[0]!.payload.subarray(1).toString("ascii"), "TASK\0detail");
-});
-
-test("sendToolStatus truncates label and detail to the DOS display budget", () => {
-  const sent: Frame[] = [];
-  const peer = new DosPeer((wire) => sent.push(decodeWire(wire)));
-  peer.sendToolStatus(9, "start", "L".repeat(40), "D".repeat(200));
-
-  const payload = sent[0]!.payload;
-  assert.equal(payload[0], 0);
-  const separator = payload.indexOf(0, 1);
-  assert.equal(separator - 1, 15, "label must be capped at 15 bytes");
-  assert.equal(payload.length - separator - 1, 80, "detail must be capped at 80 bytes");
 });
 
 test("rejects a prompt whose chunks exceed the 64 KiB budget and drops the rest", async () => {

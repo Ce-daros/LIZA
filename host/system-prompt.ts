@@ -4,8 +4,6 @@ import { LIZA_RESPONSE_RULES } from "./response-rules.js";
 import { buildToolPrompt, type ToolPromptEntry } from "./tool-prompt.js";
 import { LIZA_ARCHITECTURE } from "./liza-architecture.js";
 
-export { type DosContext } from "./dos-context-prompt.js";
-
 export function buildLizaSystemPrompt(context: DosContext, tools: readonly ToolPromptEntry[]): string {
   return [LIZA_PERSONALITY, LIZA_ARCHITECTURE, LIZA_RESPONSE_RULES, buildToolPrompt(tools), buildDosContextPrompt(context)].join("\n\n");
 }

@@ -1,7 +1,7 @@
 import { ClientMode } from "./protocol.js";
 import { DosPeer } from "./dos-peer.js";
 import { MarkdownRenderer } from "./markdown-renderer.js";
-import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
+import type { AgentDriver, DosSessionPort } from "./agent-driver.js";
 
 export class LizaController {
   private activePeer: DosPeer | undefined;
@@ -51,18 +51,30 @@ export class LizaController {
   }
 
   private async tryHandleSlashCommand(prompt: string): Promise<string | undefined> {
-    const [command, argument] = splitCommand(prompt);
+    const trimmed = prompt.trim();
+    const separator = trimmed.search(/\s/);
+    const command = separator < 0 ? trimmed.toLowerCase() : trimmed.slice(0, separator).toLowerCase();
+    const argument = separator < 0 ? "" : trimmed.slice(separator).trim();
     if (command === "/status") {
       if (argument.length !== 0) return "Usage: /status\n";
-      return formatStatus(this.agent.getStatus());
+      const status = this.agent.getStatus();
+      return `Model: ${status.model}\nEffort: ${status.effort}\n`;
     }
     if (command === "/model") {
-      if (argument.length === 0) return formatModels(this.agent.getStatus());
-      return formatStatus(await this.agent.setModel(argument.toLowerCase()));
+      if (argument.length === 0) {
+        const status = this.agent.getStatus();
+        return `Model: ${status.model}\nAvailable: ${status.availableModels.join(", ")}\n`;
+      }
+      const status = await this.agent.setModel(argument.toLowerCase());
+      return `Model: ${status.model}\nEffort: ${status.effort}\n`;
     }
     if (command === "/effort") {
-      if (argument.length === 0) return formatEfforts(this.agent.getStatus());
-      return formatStatus(this.agent.setEffort(argument.toLowerCase()));
+      if (argument.length === 0) {
+        const status = this.agent.getStatus();
+        return `Effort: ${status.effort}\nAvailable: ${status.availableEfforts.join(", ")}\n`;
+      }
+      const status = this.agent.setEffort(argument.toLowerCase());
+      return `Model: ${status.model}\nEffort: ${status.effort}\n`;
     }
     return undefined;
   }
@@ -150,23 +162,4 @@ export class LizaController {
       },
     };
   }
-}
-
-function splitCommand(prompt: string): [string, string] {
-  const trimmed = prompt.trim();
-  const separator = trimmed.search(/\s/);
-  if (separator < 0) return [trimmed.toLowerCase(), ""];
-  return [trimmed.slice(0, separator).toLowerCase(), trimmed.slice(separator).trim()];
-}
-
-function formatStatus(status: AgentStatus): string {
-  return `Model: ${status.model}\nEffort: ${status.effort}\n`;
-}
-
-function formatModels(status: AgentStatus): string {
-  return `Model: ${status.model}\nAvailable: ${status.availableModels.join(", ")}\n`;
-}
-
-function formatEfforts(status: AgentStatus): string {
-  return `Effort: ${status.effort}\nAvailable: ${status.availableEfforts.join(", ")}\n`;
 }

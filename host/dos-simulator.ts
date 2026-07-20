@@ -1,19 +1,14 @@
 import { ClientMode, Frame, FrameDecoder, MessageType, encodeFrame } from "./protocol.js";
 import { toolStatusLabelBytes, toolStatusDetailBytes } from "./protocol.generated.js";
+import type { ToolStatusState } from "./tool-status.js";
+
+export type { ToolStatusState };
 
 export function encodeExitCode(exitCode: number): Buffer {
   const payload = Buffer.alloc(2);
   payload.writeInt16LE(exitCode);
   return payload;
 }
-
-export interface LizaDosSimulatorOptions {
-  labelBytes?: number;
-  detailBytes?: number;
-  clientId?: string;
-}
-
-export type ToolStatusState = "start" | "ok" | "fail";
 
 export interface ParsedToolStatus {
   state: ToolStatusState;
@@ -79,8 +74,9 @@ export interface ParsedAssistant {
   text: string;
 }
 
-const DEFAULT_LABEL_BYTES = toolStatusLabelBytes;
-const DEFAULT_DETAIL_BYTES = toolStatusDetailBytes;
+export interface LizaDosSimulatorOptions {
+  clientId?: string;
+}
 
 export class LizaDosSimulator {
   readonly toolStatuses: ParsedToolStatus[] = [];
@@ -106,8 +102,6 @@ export class LizaDosSimulator {
 
   constructor(private readonly options: LizaDosSimulatorOptions = {}) {}
 
-  get labelBytes(): number { return this.options.labelBytes ?? DEFAULT_LABEL_BYTES; }
-  get detailBytes(): number { return this.options.detailBytes ?? DEFAULT_DETAIL_BYTES; }
   get clientId(): string { return this.options.clientId ?? "LIZA-DOS/0.1"; }
 
   send(wire: Buffer): void {
@@ -344,13 +338,13 @@ export class LizaDosSimulator {
     let cursor = 1;
     while (cursor < frame.payload.length && frame.payload[cursor] !== 0) cursor += 1;
     const rawLabel = frame.payload.subarray(1, cursor);
-    const label = rawLabel.subarray(0, this.labelBytes).toString("ascii");
+    const label = rawLabel.subarray(0, toolStatusLabelBytes).toString("ascii");
     let detail = "";
     let rawDetailLength = 0;
     if (cursor < frame.payload.length) {
       const rawDetail = frame.payload.subarray(cursor + 1);
       rawDetailLength = rawDetail.length;
-      detail = rawDetail.subarray(0, this.detailBytes).toString("ascii");
+      detail = rawDetail.subarray(0, toolStatusDetailBytes).toString("ascii");
     }
     return { state, label, detail, rawLabelLength: rawLabel.length, rawDetailLength };
   }

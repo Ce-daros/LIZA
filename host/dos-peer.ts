@@ -4,7 +4,6 @@ import { InboundQueue } from "./inbound-queue.js";
 import { PendingRequests, type PendingRequest } from "./pending-requests.js";
 import { buildExecRequest, buildListFilesRequest, buildReadFileRequest, buildWriteFileStart, writeListCursorAndLimit } from "./dos-peer-payload.js";
 import {
-  type FrameWriter,
   type ListFilesResult,
   type PeerHandlers,
   type ReadFileResult,
@@ -44,7 +43,7 @@ interface PendingList extends PendingRequest {
   resolve(result: ListFilesResult): void;
 }
 
-export type { FrameWriter, ListFilesResult, PeerHandlers, ReadFileResult, ShellResult, WriteFileResult };
+export type { ListFilesResult, PeerHandlers, ReadFileResult, ShellResult, WriteFileResult };
 
 export class DosPeer {
   private readonly promptChunks = new Map<number, Buffer[]>();
@@ -56,7 +55,7 @@ export class DosPeer {
   private nextSequence = 1;
   private connected = true;
 
-  constructor(private readonly write: FrameWriter, operationTimeoutMs = 300_000) {
+  constructor(private readonly write: (wire: Buffer) => void, operationTimeoutMs = 300_000) {
     this.executions = new PendingRequests(operationTimeoutMs);
     this.fileOperations = new PendingRequests(operationTimeoutMs);
   }
@@ -295,7 +294,7 @@ export class DosPeer {
   }
 
   private receiveReadEnd(frame: Frame): void {
-    const pending = this.takeFileOperation(frame.sequence, "read");
+    const pending = this.takeFileOperation(frame.sequence, "read") as PendingRead | undefined;
     if (!pending) return;
     if (frame.payload.length !== 7) {
       pending.reject(new Error("Invalid DOS read result"));
@@ -314,7 +313,7 @@ export class DosPeer {
   }
 
   private receiveWriteResult(frame: Frame): void {
-    const pending = this.takeFileOperation(frame.sequence, "write");
+    const pending = this.takeFileOperation(frame.sequence, "write") as PendingWrite | undefined;
     if (!pending) return;
     if (frame.payload.length !== 6) {
       pending.reject(new Error("Invalid DOS write result"));
@@ -329,7 +328,7 @@ export class DosPeer {
   }
 
   private receiveListEnd(frame: Frame): void {
-    const pending = this.takeFileOperation(frame.sequence, "list");
+    const pending = this.takeFileOperation(frame.sequence, "list") as PendingList | undefined;
     if (!pending) return;
     if (frame.payload.length !== 5) {
       pending.reject(new Error("Invalid DOS directory result"));
@@ -347,9 +346,6 @@ export class DosPeer {
     });
   }
 
-  private takeFileOperation(sequence: number, kind: "read"): PendingRead | undefined;
-  private takeFileOperation(sequence: number, kind: "write"): PendingWrite | undefined;
-  private takeFileOperation(sequence: number, kind: "list"): PendingList | undefined;
   private takeFileOperation(
     sequence: number,
     kind: "read" | "write" | "list",

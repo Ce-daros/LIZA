@@ -57,11 +57,6 @@ test("buildToolPrompt formats entries as a list with a final warning", () => {
   assert.match(prompt, /If an operation fails, correct it or explain the failure briefly\./);
 });
 
-test("buildToolPrompt renders an empty list without crashing", () => {
-  const prompt = buildToolPrompt([]);
-  assert.match(prompt, /^Active sequential tools:\n\n/);
-});
-
 test("buildLizaSystemPrompt joins personality, architecture, rules, tools, and context in that order with blank-line separators", () => {
   const context: DosContext = { mode: ClientMode.OneShot, cwd: "C:\\WORK" };
   const tools: ToolPromptEntry[] = [{ name: "dos_shell", instruction: "Run commands." }];

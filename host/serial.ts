@@ -3,18 +3,12 @@ import type { WireEndpoint } from "./pipe-server.js";
 import { defaultReconnectDelayMs } from "./protocol.generated.js";
 import { logger } from "./logger.js";
 
-export interface SerialConnectorOptions {
-  path: string;
-  baudRate: number;
-  reconnectDelayMs?: number;
-}
-
 export class SerialConnector {
   private reconnectTimer: NodeJS.Timeout | undefined;
   private currentPort: SerialPort | undefined;
   private closed = false;
 
-  constructor(private readonly options: SerialConnectorOptions) {}
+  constructor(private readonly options: { path: string; baudRate: number; reconnectDelayMs?: number }) {}
 
   start(attach: (port: WireEndpoint, label: string) => void): void {
     this.open(attach);

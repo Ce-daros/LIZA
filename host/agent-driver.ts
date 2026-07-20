@@ -1,6 +1,6 @@
 import type { ShellResult } from "./dos-peer.js";
 import type { FileOperations } from "./file-tools.js";
-import type { DosContext } from "./system-prompt.js";
+import type { DosContext } from "./dos-context-prompt.js";
 import type { ToolStatusReporter } from "./tool-status.js";
 
 export interface DosSessionPort extends FileOperations {

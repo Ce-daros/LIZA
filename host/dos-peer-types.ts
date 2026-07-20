@@ -31,6 +31,4 @@ export interface ListFilesResult {
   eof: boolean;
 }
 
-export type FrameWriter = (wire: Buffer) => void;
-
 export type WriteFileMode = "overwrite" | "append";

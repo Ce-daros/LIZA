@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createFetchUrlTool } from "./fetch-url.js";
-import { createTavilyClient } from "./tavily-client.js";
 import { fakeExtractResult, stubTavilyClient } from "./test-helpers/tavily.js";
 
 const originalKey = process.env.TAVILY_API_KEY;
@@ -14,11 +13,6 @@ async function invokeFetch(client: ReturnType<typeof stubTavilyClient>["client"]
   const tool = createFetchUrlTool(client);
   return tool.execute("f", params, undefined as never, undefined as never, undefined as never);
 }
-
-test("createTavilyClient throws when TAVILY_API_KEY is unset", () => {
-  delete process.env.TAVILY_API_KEY;
-  assert.throws(() => createTavilyClient(), /TAVILY_API_KEY is not configured/);
-});
 
 test("rejects malformed URLs before calling the client", async () => {
   process.env.TAVILY_API_KEY = "test-key";

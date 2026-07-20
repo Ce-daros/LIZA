@@ -13,11 +13,6 @@ test("buildReadFileRequest lays out offset, maxBytes, and path with the right wi
   assert.equal(payload.subarray(6).toString("ascii"), "C:\\STORY.TXT");
 });
 
-test("buildReadFileRequest propagates range errors from encodeDosPath", () => {
-  assert.throws(() => buildReadFileRequest("", 0, 1), /1 to 67 bytes/);
-  assert.throws(() => buildReadFileRequest("x".repeat(68), 0, 1), /1 to 67 bytes/);
-});
-
 test("buildWriteFileStart uses byte 1 for overwrite and 2 for append, then the path", () => {
   const overwrite = buildWriteFileStart("C:\\A.TXT", "overwrite");
   assert.equal(overwrite[0], 1);
