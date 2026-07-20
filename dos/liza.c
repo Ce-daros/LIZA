@@ -29,16 +29,6 @@ static unsigned short active_write_sequence;
 static unsigned short active_write_status;
 static unsigned long active_write_bytes;
 static int own_status_active;
-static int neon_theme_active;
-static unsigned char neon_color_index;
-
-static unsigned char neon_next_color(void)
-{
-    static const unsigned char neon_colors[] = {0x0d, 0x0b, 0x0e, 0x0a};
-    unsigned char color = neon_colors[neon_color_index];
-    neon_color_index = (neon_color_index + 1) % 4;
-    return color;
-}
 
 static void own_status_start(const char *label, const char *detail)
 {
@@ -536,13 +526,22 @@ static int handle_list_files(const liza_frame *request)
 
 static void display_assistant(const unsigned char *text, unsigned short length)
 {
-    terminal_append(text, length, terminal_color(0x07), 1);
+    terminal_append(text, length, terminal_color_text(), 1);
 }
 
 static void display_styled(unsigned char attribute, const unsigned char *text,
                            unsigned short length)
 {
-    terminal_append(text, length, terminal_color(attribute), 1);
+    terminal_append(text, length, attribute, 1);
+}
+
+/* Host style bytes carry foreground colors on black; keep the foreground but
+   render on the theme background. Quote (white on blue) maps to the theme's
+   status color so it stays distinct. */
+static unsigned char themed_style(unsigned char style)
+{
+    if (style == 0x17) return terminal_color_status();
+    return (style & 0x0f) | (terminal_color_text() & 0xf0);
 }
 
 static void handle_tool_status(const liza_frame *status)
@@ -614,7 +613,7 @@ static int run_turn(const char *prompt)
                 display_assistant(frame.payload, frame.length);
             } else if (frame.type == LIZA_STYLED_ASSISTANT_CHUNK &&
                        frame.sequence == sequence && frame.length > 0) {
-                display_styled(frame.payload[0], frame.payload + 1,
+                display_styled(themed_style(frame.payload[0]), frame.payload + 1,
                                frame.length - 1);
             } else if (frame.type == LIZA_EXEC_REQUEST) {
                 if (frame.length > 126) {
@@ -704,8 +703,148 @@ static int read_prompt(char *prompt, unsigned size)
         } else if (key >= ' ' && key <= '~' && length + 1 < size) {
             character = (unsigned char)key;
             prompt[length++] = character;
-            terminal_append(&character, 1, terminal_color(0x07), 1);
+            terminal_append(&character, 1, terminal_color_text(), 1);
         }
+    }
+}
+
+struct help_topic {
+    const char *name;
+    const char *detail;
+};
+
+static const struct help_topic help_topics[] = {
+    { "help",
+      "/HELP [command]\n"
+      "  Without a command, shows the command overview.\n"
+      "  With a command, shows details for that command.\n" },
+    { "new",
+      "/NEW\n"
+      "  Starts a new conversation; previous context is dropped.\n" },
+    { "theme",
+      "/THEME [name]\n"
+      "  Without a name, lists all color themes.\n"
+      "  With a name, switches the color theme.\n" },
+    { "model",
+      "/MODEL [alias]\n"
+      "  Without an alias, shows the active model and available aliases.\n"
+      "  With an alias, switches the active model.\n" },
+    { "effort",
+      "/EFFORT [level]\n"
+      "  Without a level, shows current and available effort levels.\n"
+      "  With a level, switches the reasoning effort.\n" },
+    { "status",
+      "/STATUS\n"
+      "  Shows the current model and reasoning effort.\n" },
+    { "exit",
+      "/EXIT\n"
+      "  Quits LIZA and returns to DOS.\n" },
+};
+
+#define HELP_TOPIC_COUNT (sizeof(help_topics) / sizeof(help_topics[0]))
+
+static void help_entry(const char *command, const char *description)
+{
+    char padded[20];
+    unsigned length = strlen(command);
+
+    memset(padded, ' ', sizeof(padded));
+    if (length > sizeof(padded) - 1) length = sizeof(padded) - 1;
+    memcpy(padded, command, length);
+    terminal_write("  ");
+    display_styled(terminal_color_accent(), (const unsigned char *)padded,
+                   sizeof(padded));
+    terminal_write(description);
+    terminal_write("\n");
+}
+
+static void show_help_overview(void)
+{
+    display_styled(terminal_color_title(), (const unsigned char *)"Commands\n", 9);
+    help_entry("/HELP [command]", "Show help, optionally for a single command");
+    help_entry("/NEW", "Start a new conversation");
+    help_entry("/THEME [name]", "List color themes or switch to one");
+    help_entry("/MODEL [alias]", "Show or switch the active model");
+    help_entry("/EFFORT [level]", "Show or switch the reasoning effort");
+    help_entry("/STATUS", "Show the current model and effort");
+    help_entry("/EXIT", "Quit LIZA");
+    display_styled(terminal_color_title(), (const unsigned char *)"Keyboard\n", 9);
+    terminal_write("  Up/Down, PgUp/PgDn, Home/End  Scroll output history\n");
+    terminal_write("  Esc                           Cancel turn / clear input line\n");
+    terminal_write("One-shot mode: LIZA <prompt>\n");
+}
+
+static void show_help(char *topic)
+{
+    unsigned i;
+
+    if (*topic == '\0') {
+        show_help_overview();
+        return;
+    }
+    for (i = 0; i < HELP_TOPIC_COUNT; ++i)
+        if (same_text(topic, help_topics[i].name)) {
+            terminal_write(help_topics[i].detail);
+            return;
+        }
+    display_styled(terminal_color_error(), (const unsigned char *)"LIZA: ", 6);
+    terminal_write("no help for '");
+    terminal_write(topic);
+    terminal_write("'. Run /help to see available commands.\n");
+}
+
+static void list_themes(void)
+{
+    unsigned char i;
+
+    for (i = 0; i < LIZA_THEME_COUNT; ++i) {
+        int current = i == terminal_theme_index();
+        terminal_write(current ? "* " : "  ");
+        display_styled(current ? terminal_color_accent() : terminal_color_text(),
+                       (const unsigned char *)liza_themes[i].name,
+                       (unsigned short)strlen(liza_themes[i].name));
+        terminal_write("\n");
+    }
+}
+
+static void switch_theme(char *name)
+{
+    unsigned char i;
+
+    for (i = 0; i < LIZA_THEME_COUNT; ++i)
+        if (same_text(name, liza_themes[i].name)) {
+            terminal_apply_theme(i);
+            display_styled(terminal_color_accent(),
+                           (const unsigned char *)"Theme: ", 7);
+            terminal_write(liza_themes[i].name);
+            terminal_write("\n");
+            return;
+        }
+    display_styled(terminal_color_error(), (const unsigned char *)"LIZA: ", 6);
+    terminal_write("unknown theme '");
+    terminal_write(name);
+    terminal_write("'. Run /theme to list themes.\n");
+}
+
+static int start_new_conversation(void)
+{
+    unsigned short sequence = send_new(LIZA_NEW_SESSION, (const unsigned char *)"", 0);
+
+    if (sequence == 0) return 0;
+    begin_host_wait();
+    for (;;) {
+        if (poll_frame()) {
+            if (frame.type == LIZA_ASSISTANT_CHUNK && frame.sequence == sequence)
+                display_assistant(frame.payload, frame.length);
+            else if (frame.type == LIZA_COMPLETE && frame.sequence == sequence)
+                return 1;
+            else if (frame.type == LIZA_ERROR && frame.sequence == sequence) {
+                terminal_write("LIZA: ");
+                display_assistant(frame.payload, frame.length);
+                terminal_write("\n");
+            }
+        }
+        if (!maintain_link()) return 0;
     }
 }
 
@@ -713,58 +852,31 @@ static int interactive(void)
 {
     char prompt[LIZA_PROMPT_SIZE];
     char cwd[80];
-    unsigned short sequence;
 
-    display_styled(0x0b, (const unsigned char *)"LIZA 0.1", 8);
-    terminal_write("  /EXIT /NEW /THEME [default|neon]\n");
+    display_styled(terminal_color_title(), (const unsigned char *)"LIZA 0.1", 8);
+    terminal_write("  type /HELP for commands\n");
     for (;;) {
         if (getcwd(cwd, sizeof(cwd)) == NULL) cwd[0] = '\0';
         terminal_write("\n");
-        if (neon_theme_active) {
-            unsigned char c1 = neon_next_color();
-            unsigned char c2 = neon_next_color();
-            unsigned char c3 = neon_next_color();
-            display_styled(c1, (const unsigned char *)"[", 1);
-            display_styled(c2, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
-            display_styled(c3, (const unsigned char *)"] > ", 4);
-        } else {
-            display_styled(0x0a, (const unsigned char *)"[", 1);
-            display_styled(0x0a, (const unsigned char *)cwd, (unsigned short)strlen(cwd));
-            display_styled(0x0a, (const unsigned char *)"] > ", 4);
-        }
+        display_styled(terminal_color_accent(), (const unsigned char *)"[", 1);
+        display_styled(terminal_color_accent(), (const unsigned char *)cwd,
+                       (unsigned short)strlen(cwd));
+        display_styled(terminal_color_accent(), (const unsigned char *)"] > ", 4);
         if (!read_prompt(prompt, sizeof(prompt))) return 1;
-        if (same_text(prompt, "/exit")) return 1;
-        if (same_text(prompt, "/new")) {
-            sequence = send_new(LIZA_NEW_SESSION, (const unsigned char *)"", 0);
-            if (sequence == 0) return 0;
-            begin_host_wait();
-            for (;;) {
-                if (poll_frame()) {
-                    if (frame.type == LIZA_ASSISTANT_CHUNK && frame.sequence == sequence)
-                        display_assistant(frame.payload, frame.length);
-                    else if (frame.type == LIZA_COMPLETE && frame.sequence == sequence)
-                        break;
-                    else if (frame.type == LIZA_ERROR && frame.sequence == sequence) {
-                        terminal_write("LIZA: ");
-                        display_assistant(frame.payload, frame.length);
-                        terminal_write("\n");
-                    }
-                }
-                if (!maintain_link()) return 0;
-            }
+        if (same_word(prompt, "/exit") && *skip_spaces(prompt + 5) == '\0')
+            return 1;
+        if (same_word(prompt, "/new")) {
+            if (!start_new_conversation()) return 0;
             continue;
         }
-        if (same_text(prompt, "/theme") || same_text(prompt, "/theme default")) {
-            terminal_apply_default_theme();
-            neon_theme_active = 0;
-            display_styled(0x0a, (const unsigned char *)"Theme: default\n", 15);
+        if (same_word(prompt, "/help")) {
+            show_help(skip_spaces(prompt + 5));
             continue;
         }
-        if (same_text(prompt, "/theme neon")) {
-            terminal_apply_neon_theme();
-            neon_theme_active = 1;
-            neon_color_index = 0;
-            display_styled(0x0d, (const unsigned char *)"Theme: neon\n", 12);
+        if (same_word(prompt, "/theme")) {
+            char *name = skip_spaces(prompt + 6);
+            if (*name == '\0') list_themes();
+            else switch_theme(name);
             continue;
         }
         if (prompt[0] != '\0' && !run_turn(prompt)) return 0;
@@ -781,7 +893,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "LIZA: prompt is too long.\n");
         return 2;
     }
-    terminal_apply_default_theme();
+    terminal_apply_theme(LIZA_THEME_DEFAULT);
     terminal_reset();
     if (!serial_open()) {
         terminal_write("LIZA: BIOS reports no COM1 port.\n");

@@ -9,9 +9,11 @@
   "scripts": {
     "protocol:generate": "node tools/generate_protocol.mjs",
     "protocol:check": "node tools/generate_protocol.mjs --check",
+    "themes:generate": "node tools/generate_themes.mjs",
+    "themes:check": "node tools/generate_themes.mjs --check",
     "docs:generate": "node --import tsx tools/generate_docs.ts",
     "docs:check": "node --import tsx tools/generate_docs.ts --check",
-    "build": "npm run protocol:check && npm run docs:check && tsc -p tsconfig.json",
+    "build": "npm run protocol:check && npm run themes:check && npm run docs:check && tsc -p tsconfig.json",
     "dev": "node --env-file-if-exists=.env --import tsx --watch host/main.ts",
     "host": "node --env-file-if-exists=.env --import tsx host/main.ts",
     "test": "node --import tsx --test host/**/*.test.ts",

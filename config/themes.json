@@ -1,0 +1,130 @@
+{
+  "themes": {
+    "default": {
+      "background": "black",
+      "text": "lightgray",
+      "title": "white",
+      "accent": "green",
+      "status": "yellow",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "norton": {
+      "background": "blue",
+      "text": "white",
+      "title": "yellow",
+      "accent": "yellow",
+      "status": "lightcyan",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "cyberpunk": {
+      "background": "black",
+      "text": "lightcyan",
+      "title": "lightmagenta",
+      "accent": "yellow",
+      "status": "magenta",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "citypop": {
+      "background": "lightgray",
+      "text": "blue",
+      "title": "magenta",
+      "accent": "cyan",
+      "status": "blue",
+      "ok": "green",
+      "error": "red"
+    },
+    "win95": {
+      "background": "lightgray",
+      "text": "black",
+      "title": "white@blue",
+      "accent": "blue",
+      "status": "darkgray",
+      "ok": "green",
+      "error": "red"
+    },
+    "bbs": {
+      "background": "black",
+      "text": "lightgray",
+      "title": "lightcyan@blue",
+      "accent": "lightmagenta",
+      "status": "yellow",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "amber": {
+      "background": "black",
+      "text": "yellow",
+      "title": "lightyellow",
+      "accent": "yellow",
+      "status": "darkgray",
+      "ok": "lightyellow",
+      "error": "lightred"
+    },
+    "wordperfect": {
+      "background": "blue",
+      "text": "white",
+      "title": "yellow@blue",
+      "accent": "lightcyan",
+      "status": "black@lightgray",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "turbo": {
+      "background": "blue",
+      "text": "lightgray",
+      "title": "black@lightgray",
+      "accent": "yellow",
+      "status": "black@cyan",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "irix": {
+      "background": "lightgray",
+      "text": "black",
+      "title": "white@magenta",
+      "accent": "cyan",
+      "status": "blue",
+      "ok": "green",
+      "error": "red"
+    },
+    "cde": {
+      "background": "cyan",
+      "text": "black",
+      "title": "white@blue",
+      "accent": "magenta",
+      "status": "black@lightgray",
+      "ok": "green",
+      "error": "red"
+    },
+    "matrix99": {
+      "background": "black",
+      "text": "green",
+      "title": "lightgreen",
+      "accent": "white",
+      "status": "darkgray",
+      "ok": "lightgreen",
+      "error": "lightred"
+    },
+    "corporate": {
+      "background": "lightgray",
+      "text": "black",
+      "title": "white@blue",
+      "accent": "darkgray",
+      "status": "blue",
+      "ok": "green",
+      "error": "red"
+    },
+    "y2k": {
+      "background": "black",
+      "text": "lightcyan",
+      "title": "black@lightcyan",
+      "accent": "lightmagenta",
+      "status": "lightblue",
+      "ok": "lightgreen",
+      "error": "lightred"
+    }
+  }
+}

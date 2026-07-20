@@ -26,10 +26,13 @@ default); the wire format is specified in `protocol/PROTOCOL.md`.
 - `protocol/` — serial protocol specification.
 - `tools/` — `build_dos.ps1` (client + floppy image), `create_dos_floppy.py`,
   `generate_protocol.mjs` (codegen from `protocol/schema.json`),
+  `generate_themes.mjs` (codegen from `config/themes.json` into
+  `dos/themes_gen.h`; run `npm run themes:generate` after editing themes),
   `generate_docs.ts` (regenerates the auto-marked tool / message blocks in
   `README.md`, `docs/STATUS.md`, and `protocol/PROTOCOL.md`).
 - `config/` — `models.json` (per-provider routing and the LIZA-side `alias`
-  + `default` fields used by `host/models-config.ts`).
+  + `default` fields used by `host/models-config.ts`), `themes.json`
+  (DOS color themes: 7 roles with VGA color names, optional `fg@bg` per role).
 - `vm/` — 86Box machine configuration.
 
 ## Commands

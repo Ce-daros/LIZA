@@ -78,9 +78,11 @@ C:\>LIZA what's your name?
 C:\>LIZA
 ```
 
-With no arguments, LIZA stays in a scrolling interactive session. `/EXIT`
-returns to DOS, `/NEW` starts a new conversation, `/THEME` reapplies the default
-theme, `/MODEL` displays the aliases `mimo` and `ds`; use `/MODEL mimo` or
+With no arguments, LIZA stays in a scrolling interactive session. `/HELP`
+lists all commands (optionally `/HELP <command>` for details). `/EXIT`
+returns to DOS, `/NEW` starts a new conversation, `/THEME` lists the color
+themes and `/THEME <name>` switches to one, `/MODEL` displays the aliases
+`mimo` and `ds`; use `/MODEL mimo` or
 `/MODEL ds` to select one. `/EFFORT` displays or sets the active model's
 reasoning level (`off` or `high` for MiMo; `off`, `high`, or `xhigh` for
 DeepSeek), `/STATUS` displays the active model and effort, and Esc cancels
@@ -109,8 +111,10 @@ directory with a scrubbed environment — host variables such as API keys are no
 visible — and a bounded runtime, returning stdout, stderr, and the exit code as
 text. NumPy, SciPy, pandas, Matplotlib, and SymPy are available.
 
-Assistant Markdown is rendered incrementally without ANSI.SYS. The default
-LIZA theme uses a black background; `/THEME` and `/THEME DEFAULT` apply it.
+Assistant Markdown is rendered incrementally without ANSI.SYS. The color
+theme is `default` (black background); `/THEME` lists the themes defined in
+`config\themes.json` (norton, cyberpunk, citypop, amber, bbs, and more), and
+`/THEME <name>` switches, repainting the retained history.
 Tool activity stays on one line: `[EXEC]`, `[READ]`, `[WRITE]`, `[FILES]`,
 `[SEARCH]`, `[FETCH]`, and `[PYTHON]` animate while running and become `[OK]`
 or `[FAIL]` when complete. Version 0.1 styles headings, bold and emphasis,

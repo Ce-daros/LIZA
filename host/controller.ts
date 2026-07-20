@@ -76,6 +76,9 @@ export class LizaController {
       const status = this.agent.setEffort(argument.toLowerCase());
       return `Model: ${status.model}\nEffort: ${status.effort}\n`;
     }
+    if (command.startsWith("/")) {
+      return `Unknown command '${command}'. Run /help to see available commands.\n`;
+    }
     return undefined;
   }
 

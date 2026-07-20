@@ -11,6 +11,8 @@ $env:PATH = "$(Join-Path $Watcom 'binnt64');$(Join-Path $Watcom 'binnt');$env:PA
 
 & node (Join-Path $root "tools\generate_protocol.mjs") --check
 if ($LASTEXITCODE -ne 0) { throw "Generated protocol files are stale" }
+& node (Join-Path $root "tools\generate_themes.mjs") --check
+if ($LASTEXITCODE -ne 0) { throw "Generated theme files are stale" }
 
 Push-Location (Join-Path $root "dos")
 try {

@@ -153,6 +153,21 @@ test("handles model, effort, and status commands without prompting the agent", a
   assert.equal(outgoing.filter((frame) => frame.type === MessageType.Complete).length, 3);
 });
 
+test("replies with an error for unknown slash commands", async () => {
+  const agent = new FakeAgent();
+  const outgoing: Frame[] = [];
+  const peer = new DosPeer((wire) => outgoing.push(decode(wire)));
+  new LizaController(agent).attach(peer);
+
+  peer.receive({ type: MessageType.PromptChunk, sequence: 44, payload: Buffer.from("/frobnicate now") });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 44, payload: Buffer.alloc(0) });
+  await settle();
+
+  assert.deepEqual(agent.runs, []);
+  const reply = outgoing.find((frame) => frame.type === MessageType.AssistantChunk);
+  assert.equal(reply?.payload.toString("ascii"), "Unknown command '/frobnicate'. Run /help to see available commands.\n");
+});
+
 test("a cancel emits exactly one Cancelled error frame before Complete", async () => {
   const agent = new FakeAgent();
   let rejectRun!: (error: Error) => void;
