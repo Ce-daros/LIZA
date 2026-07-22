@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import {
   AuthStorage,
@@ -7,8 +8,9 @@ import {
   ModelRegistry,
   SessionManager,
   type AgentSession,
+  type SessionInfo,
 } from "@earendil-works/pi-coding-agent";
-import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
+import type { AgentDriver, AgentStatus, DosSessionPort, SavedSession } from "./agent-driver.js";
 import { loadLizaModels, type LizaModel } from "./models-config.js";
 import { buildLizaSystemPrompt } from "./system-prompt.js";
 import { createLizaToolRegistry } from "./tool-registry.js";
@@ -50,6 +52,8 @@ export class PiDriver implements AgentDriver {
     return {
       model: alias,
       effort: session.thinkingLevel,
+      sessionId: session.sessionId,
+      sessionName: session.sessionName,
       availableModels: this.lizaModels.map((m) => m.alias),
       availableEfforts: session.getAvailableThinkingLevels(),
     };
@@ -98,12 +102,58 @@ export class PiDriver implements AgentDriver {
     await this.open(SessionManager.create(this.cwd, this.sessionDir));
   }
 
+  async listSessions(): Promise<readonly SavedSession[]> {
+    const activeId = this.requireSession().sessionId;
+    const sessions = await SessionManager.list(this.cwd, this.sessionDir);
+    return sessions
+      .sort((left, right) => right.modified.getTime() - left.modified.getTime())
+      .map((session) => this.toSavedSession(session, session.id === activeId));
+  }
+
+  async resumeSession(id: string): Promise<SavedSession> {
+    this.requirePort();
+    const session = await this.findSession(id);
+    if (session.id !== this.requireSession().sessionId) {
+      this.closeSession();
+      await this.open(SessionManager.open(session.path, this.sessionDir, this.cwd), true);
+    }
+    return this.toSavedSession(session, true);
+  }
+
+  renameSession(name: string): void {
+    const trimmed = name.trim();
+    if (trimmed.length === 0 || trimmed.length > 60 || /[\r\n]/.test(trimmed))
+      throw new RangeError("Session name must contain 1 to 60 characters");
+    this.requireSession().setSessionName(trimmed);
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    const session = await this.findSession(id);
+    if (session.id === this.requireSession().sessionId)
+      throw new RangeError("Cannot delete the active session");
+    await rm(session.path);
+  }
+
+  exportSession(): string {
+    const session = this.requireSession();
+    const title = session.sessionName ?? session.sessionId;
+    const messages = session.messages.flatMap((message) => {
+      if (message.role !== "user" && message.role !== "assistant") return [];
+      const text = typeof message.content === "string"
+        ? message.content
+        : message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
+      if (text.length === 0) return [];
+      return [`${message.role === "user" ? "User" : "LIZA"}:\n${text}\n`];
+    });
+    return `${title}\n${"=".repeat(title.length)}\n\n${messages.join("\n")}`;
+  }
+
   dispose(): void {
     this.closeSession();
   }
 
-  private async open(sessionManager: SessionManager): Promise<void> {
-    this.sessionTimestamp = new Date().toString();
+  private async open(sessionManager: SessionManager, resumed = false): Promise<void> {
+    this.sessionTimestamp = resumed ? undefined : new Date().toString();
     const authStorage = AuthStorage.inMemory();
     const modelRegistry = ModelRegistry.create(authStorage, this.modelsPath);
     const modelError = modelRegistry.getError();
@@ -187,5 +237,27 @@ export class PiDriver implements AgentDriver {
   private requirePort(): DosSessionPort {
     if (!this.port) throw new Error("DOS client is not connected");
     return this.port;
+  }
+
+  private async findSession(id: string): Promise<SessionInfo> {
+    const normalized = id.trim().toLowerCase();
+    if (normalized.length < 8) throw new RangeError("Session ID must contain at least 8 characters");
+    const matches = (await SessionManager.list(this.cwd, this.sessionDir))
+      .filter((session) => session.id.toLowerCase().startsWith(normalized));
+    if (matches.length === 0) throw new RangeError(`No session starts with '${id}'`);
+    if (matches.length > 1) throw new RangeError(`Session ID '${id}' is ambiguous`);
+    return matches[0]!;
+  }
+
+  private toSavedSession(session: SessionInfo, active: boolean): SavedSession {
+    return {
+      id: session.id,
+      name: session.name,
+      created: session.created,
+      modified: session.modified,
+      messageCount: session.messageCount,
+      firstMessage: session.firstMessage,
+      active,
+    };
   }
 }

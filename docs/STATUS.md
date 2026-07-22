@@ -5,7 +5,7 @@
 - [x] Framed serial protocol with CRC, partial-read handling, resynchronization,
   chunked streams, cancellation, errors, disconnect, and session control
 - [x] Windows named-pipe server for 86Box 5.4 and optional physical serial port
-- [x] Fresh Pi conversation for every LIZA launch and explicit new-session command
+- [x] Persistent Pi conversations with listing, resume, rename, deletion, text export, and explicit new-session command
 - [x] Xiaomi MiMo V2.5 Pro OpenAI-compatible provider configuration
 - [x] MiMo function-calling, structured-output, and reasoning-capable model registration
 - [x] OpenRouter DeepSeek V4 Pro provider with runtime effort switching

@@ -51,9 +51,11 @@ baudrate = 115200
 For a physical or paired virtual serial port, set `LIZA_PORT` (for example
 `COM2`) and optionally `LIZA_BAUD` before running the host.
 
-Each LIZA launch creates a new Pi conversation in `.liza\sessions`; no earlier
-conversation is resumed. In interactive mode, `/NEW` creates another new
-conversation. The configured MiMo model is `mimo-v2.5-pro`; its limits are
+Each LIZA launch creates a new Pi conversation in `.liza\sessions`. In
+interactive mode, `/SESSIONS` lists saved conversations, `/RESUME <id>` opens
+one, `/RENAME <name>` names it, `/DELETE <id>` removes an inactive one, and
+`/EXPORT <path>` writes the active conversation to a DOS text file. `/NEW`
+creates another new conversation. The configured MiMo model is `mimo-v2.5-pro`; its limits are
 defined in `config\models.json`. The optional DeepSeek alias uses OpenRouter.
 API keys are read from `MIMO_API_KEY`, `OPENROUTER_API_KEY`, and
 `TAVILY_API_KEY` and are not stored here. LIZA uses
@@ -80,7 +82,8 @@ C:\>LIZA
 
 With no arguments, LIZA stays in a scrolling interactive session. `/HELP`
 lists all commands (optionally `/HELP <command>` for details). `/EXIT`
-returns to DOS, `/NEW` starts a new conversation, `/THEME` lists the color
+returns to DOS, `/NEW` starts a new conversation, `/SESSIONS` lists saved
+conversations, `/RESUME <id>` opens one, `/THEME` lists the color
 themes and `/THEME <name>` switches to one, `/MODEL` displays the aliases
 `mimo` and `ds`; use `/MODEL mimo` or
 `/MODEL ds` to select one. `/EFFORT` displays or sets the active model's

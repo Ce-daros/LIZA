@@ -34,13 +34,19 @@ export class LizaController {
   }
 
   private async onPrompt(peer: DosPeer, sequence: number, prompt: string): Promise<void> {
-    const commandResult = await this.tryHandleSlashCommand(prompt);
-    if (commandResult !== undefined) {
-      this.respond(peer, sequence, commandResult);
-      return;
-    }
     if (this.running) {
       this.respond(peer, sequence, "LIZA is already processing a request", true);
+      return;
+    }
+    let commandResult: string | undefined;
+    try {
+      commandResult = await this.tryHandleSlashCommand(peer, prompt);
+    } catch (error) {
+      this.respond(peer, sequence, error instanceof Error ? error.message : String(error), true);
+      return;
+    }
+    if (commandResult !== undefined) {
+      this.respond(peer, sequence, commandResult);
       return;
     }
     if (prompt.trim().length === 0) {
@@ -50,7 +56,7 @@ export class LizaController {
     await this.runAgentTurn(peer, sequence, prompt);
   }
 
-  private async tryHandleSlashCommand(prompt: string): Promise<string | undefined> {
+  private async tryHandleSlashCommand(peer: DosPeer, prompt: string): Promise<string | undefined> {
     const trimmed = prompt.trim();
     const separator = trimmed.search(/\s/);
     const command = separator < 0 ? trimmed.toLowerCase() : trimmed.slice(0, separator).toLowerCase();
@@ -58,7 +64,7 @@ export class LizaController {
     if (command === "/status") {
       if (argument.length !== 0) return "Usage: /status\n";
       const status = this.agent.getStatus();
-      return `Model: ${status.model}\nEffort: ${status.effort}\n`;
+      return `Session: ${status.sessionId.slice(0, 8)}${status.sessionName ? ` (${status.sessionName})` : ""}\nModel: ${status.model}\nEffort: ${status.effort}\n`;
     }
     if (command === "/model") {
       if (argument.length === 0) {
@@ -75,6 +81,30 @@ export class LizaController {
       }
       const status = this.agent.setEffort(argument.toLowerCase());
       return `Model: ${status.model}\nEffort: ${status.effort}\n`;
+    }
+    if (command === "/sessions") {
+      if (argument.length !== 0) return "Usage: /sessions\n";
+      return formatSessions(await this.agent.listSessions());
+    }
+    if (command === "/resume") {
+      if (argument.length === 0) return "Usage: /resume <session-id>\n";
+      const session = await this.agent.resumeSession(argument);
+      return `Resumed ${session.id.slice(0, 8)}${session.name ? ` (${session.name})` : ""}.\n`;
+    }
+    if (command === "/rename") {
+      if (argument.length === 0) return "Usage: /rename <name>\n";
+      this.agent.renameSession(argument);
+      return `Session renamed to ${argument.trim()}.\n`;
+    }
+    if (command === "/delete") {
+      if (argument.length === 0) return "Usage: /delete <session-id>\n";
+      await this.agent.deleteSession(argument);
+      return "Session deleted.\n";
+    }
+    if (command === "/export") {
+      if (argument.length === 0) return "Usage: /export <DOS path>\n";
+      const bytesWritten = await this.writeExport(peer, argument, this.agent.exportSession());
+      return `Exported ${bytesWritten} bytes to ${argument}.\n`;
     }
     if (command.startsWith("/")) {
       return `Unknown command '${command}'. Run /help to see available commands.\n`;
@@ -165,4 +195,26 @@ export class LizaController {
       },
     };
   }
+
+  private async writeExport(peer: DosPeer, path: string, content: string): Promise<number> {
+    const chunkSize = 12000;
+    let offset = 0;
+    let bytesWritten = 0;
+    do {
+      const chunk = content.slice(offset, offset + chunkSize);
+      const result = await peer.writeFile(path, chunk, offset === 0 ? "overwrite" : "append");
+      bytesWritten += result.bytesWritten;
+      offset += chunk.length;
+    } while (offset < content.length);
+    return bytesWritten;
+  }
+}
+
+function formatSessions(sessions: readonly import("./agent-driver.js").SavedSession[]): string {
+  if (sessions.length === 0) return "No saved sessions.\n";
+  return sessions.map((session) => {
+    const name = (session.name ?? session.firstMessage.replace(/\s+/g, " ").slice(0, 36)) || "Untitled";
+    const marker = session.active ? "* " : "  ";
+    return `${marker}${session.id.slice(0, 8)}  ${name}  ${session.messageCount} messages\n`;
+  }).join("");
 }

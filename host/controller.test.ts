@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { LizaController } from "./controller.js";
-import type { AgentDriver, AgentStatus, DosSessionPort } from "./agent-driver.js";
+import type { AgentDriver, AgentStatus, DosSessionPort, SavedSession } from "./agent-driver.js";
 import { DosPeer } from "./dos-peer.js";
 import { Frame, FrameDecoder, MessageType } from "./protocol.js";
 import { encodeExitCode } from "./dos-simulator.js";
@@ -14,9 +14,28 @@ class FakeAgent implements AgentDriver {
   status: AgentStatus = {
     model: "mimo",
     effort: "high",
+    sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    sessionName: undefined,
     availableModels: ["mimo", "ds"],
     availableEfforts: ["off", "high"],
   };
+  savedSessions: SavedSession[] = [{
+    id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    name: undefined,
+    created: new Date("2026-01-01T00:00:00Z"),
+    modified: new Date("2026-01-01T00:00:00Z"),
+    messageCount: 2,
+    firstMessage: "first conversation",
+    active: true,
+  }, {
+    id: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+    name: "DOS work",
+    created: new Date("2026-01-02T00:00:00Z"),
+    modified: new Date("2026-01-02T00:00:00Z"),
+    messageCount: 8,
+    firstMessage: "repair a batch file",
+    active: false,
+  }];
 
   async connect(port: DosSessionPort): Promise<void> {
     this.port = port;
@@ -45,6 +64,18 @@ class FakeAgent implements AgentDriver {
 
   async abort(): Promise<void> { this.aborted = true; }
   async newSession(): Promise<void> { this.sessions += 1; }
+  async listSessions(): Promise<readonly SavedSession[]> { return this.savedSessions; }
+  async resumeSession(id: string): Promise<SavedSession> {
+    const session = this.savedSessions.find((candidate) => candidate.id.startsWith(id));
+    if (!session) throw new RangeError(`No session starts with '${id}'`);
+    this.status = { ...this.status, sessionId: session.id, sessionName: session.name };
+    return { ...session, active: true };
+  }
+  renameSession(name: string): void { this.status = { ...this.status, sessionName: name }; }
+  async deleteSession(id: string): Promise<void> {
+    this.savedSessions = this.savedSessions.filter((session) => !session.id.startsWith(id));
+  }
+  exportSession(): string { return "LIZA export\n\nUser:\nhello\n\nLIZA:\nhello\n"; }
   dispose(): void {}
 }
 
@@ -151,6 +182,88 @@ test("handles model, effort, and status commands without prompting the agent", a
   assert.equal(agent.status.model, "ds");
   assert.equal(agent.status.effort, "off");
   assert.equal(outgoing.filter((frame) => frame.type === MessageType.Complete).length, 3);
+});
+
+test("lists, resumes, renames, and deletes persistent sessions without prompting the agent", async () => {
+  const agent = new FakeAgent();
+  const outgoing: Frame[] = [];
+  const peer = new DosPeer((wire) => outgoing.push(decode(wire)));
+  new LizaController(agent).attach(peer);
+
+  for (const [sequence, command] of [
+    [45, "/sessions"],
+    [46, "/resume bbbbbbbb"],
+    [47, "/rename Build notes"],
+    [48, "/delete aaaaaaaa"],
+  ] as const) {
+    peer.receive({ type: MessageType.PromptChunk, sequence, payload: Buffer.from(command) });
+    peer.receive({ type: MessageType.PromptEnd, sequence, payload: Buffer.alloc(0) });
+    await settle();
+  }
+
+  assert.deepEqual(agent.runs, []);
+  const text = outgoing.filter((frame) => frame.type === MessageType.AssistantChunk)
+    .map((frame) => frame.payload.toString("ascii")).join("");
+  assert.match(text, /aaaaaaaa  first conversation  2 messages/);
+  assert.match(text, /bbbbbbbb  DOS work  8 messages/);
+  assert.match(text, /Resumed bbbbbbbb \(DOS work\)/);
+  assert.match(text, /Session renamed to Build notes/);
+  assert.match(text, /Session deleted/);
+  assert.equal(agent.savedSessions.length, 1);
+});
+
+test("exports the active session through the DOS file protocol", async () => {
+  const agent = new FakeAgent();
+  const outgoing: Frame[] = [];
+  let peer: DosPeer;
+  peer = new DosPeer((wire) => {
+    const frame = decode(wire);
+    outgoing.push(frame);
+    if (frame.type === MessageType.WriteFileEnd) {
+      peer.receive({
+        type: MessageType.WriteFileResult,
+        sequence: frame.sequence,
+        payload: Buffer.from([0, 0, 32, 0, 0, 0]),
+      });
+    }
+  });
+  new LizaController(agent).attach(peer);
+
+  peer.receive({ type: MessageType.PromptChunk, sequence: 49, payload: Buffer.from("/export LIZA.TXT") });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 49, payload: Buffer.alloc(0) });
+  await settle();
+  await settle();
+
+  assert.ok(outgoing.some((frame) => frame.type === MessageType.WriteFileStart));
+  const reply = outgoing.find((frame) => frame.type === MessageType.AssistantChunk);
+  assert.equal(reply?.payload.toString("ascii"), "Exported 32 bytes to LIZA.TXT.\n");
+});
+
+test("exports long sessions in bounded DOS writes", async () => {
+  const agent = new FakeAgent();
+  agent.exportSession = () => "x".repeat(24001);
+  const outgoing: Frame[] = [];
+  let peer: DosPeer;
+  peer = new DosPeer((wire) => {
+    const frame = decode(wire);
+    outgoing.push(frame);
+    if (frame.type === MessageType.WriteFileEnd) {
+      peer.receive({
+        type: MessageType.WriteFileResult,
+        sequence: frame.sequence,
+        payload: Buffer.from([0, 0, 0xe0, 0x2e, 0, 0]),
+      });
+    }
+  });
+  new LizaController(agent).attach(peer);
+
+  peer.receive({ type: MessageType.PromptChunk, sequence: 50, payload: Buffer.from("/export LOG.TXT") });
+  peer.receive({ type: MessageType.PromptEnd, sequence: 50, payload: Buffer.alloc(0) });
+  await settle();
+  await settle();
+  await settle();
+
+  assert.equal(outgoing.filter((frame) => frame.type === MessageType.WriteFileStart).length, 3);
 });
 
 test("replies with an error for unknown slash commands", async () => {

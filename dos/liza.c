@@ -67,6 +67,21 @@ static const struct help_topic help_topics[] = {
     { "new",
       "/NEW\n"
       "  Starts a new conversation; previous context is dropped.\n" },
+    { "sessions",
+      "/SESSIONS\n"
+      "  Lists saved conversations.\n" },
+    { "resume",
+      "/RESUME <session-id>\n"
+      "  Opens a saved conversation by its displayed ID.\n" },
+    { "rename",
+      "/RENAME <name>\n"
+      "  Names the active conversation.\n" },
+    { "delete",
+      "/DELETE <session-id>\n"
+      "  Deletes a saved conversation. The active one cannot be deleted.\n" },
+    { "export",
+      "/EXPORT <path>\n"
+      "  Writes the active conversation to a DOS text file.\n" },
     { "theme",
       "/THEME [name]\n"
       "  Without a name, lists all color themes.\n"
@@ -110,6 +125,11 @@ static void show_help_overview(void)
                         (const unsigned char *)"Commands\n", 9);
     help_entry("/HELP [command]", "Show help, optionally for a single command");
     help_entry("/NEW", "Start a new conversation");
+    help_entry("/SESSIONS", "List saved conversations");
+    help_entry("/RESUME <id>", "Open a saved conversation");
+    help_entry("/RENAME <name>", "Name the active conversation");
+    help_entry("/DELETE <id>", "Delete a saved conversation");
+    help_entry("/EXPORT <path>", "Save the conversation as text");
     help_entry("/THEME [name]", "List color themes or switch to one");
     help_entry("/MODEL [alias]", "Show or switch the active model");
     help_entry("/EFFORT [level]", "Show or switch the reasoning effort");
