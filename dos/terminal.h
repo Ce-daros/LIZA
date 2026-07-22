@@ -6,6 +6,8 @@
 
 #define TERMINAL_WIDTH LIZA_TERMINAL_WIDTH
 
+int terminal_initialize(void);
+void terminal_shutdown(void);
 void terminal_append(const unsigned char *text, unsigned short length,
                      unsigned char color, int redraw);
 void terminal_write(const char *text);

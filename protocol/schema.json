@@ -22,7 +22,7 @@
     "promptSize": 512,
     "commandSize": 128,
     "displayHeight": 25,
-    "historyRows": 150
+    "historyRows": 16384
   },
   "messages": [
     { "name": "HELLO", "value": 1, "direction": "DOS to host", "payload": "client identifier" },

@@ -4,9 +4,20 @@
 #include <string.h>
 #include "serial.h"
 #include "terminal.h"
+#include "xms.h"
 
 #define DISPLAY_HEIGHT LIZA_DISPLAY_HEIGHT
 #define HISTORY_ROWS LIZA_HISTORY_ROWS
+#define ROW_BYTES (TERMINAL_WIDTH * sizeof(unsigned short))
+#define HISTORY_KILOBYTES (((unsigned long)HISTORY_ROWS * ROW_BYTES + 1023UL) / 1024UL)
+
+#define STYLE_TEXT 0
+#define STYLE_TITLE 1
+#define STYLE_ACCENT 2
+#define STYLE_STATUS 3
+#define STYLE_OK 4
+#define STYLE_ERROR 5
+#define STYLE_RAW 0x10
 
 static int last_output = '\n';
 static unsigned char terminal_attribute;
@@ -14,8 +25,9 @@ static unsigned char terminal_original_attribute;
 static int terminal_attribute_known;
 static unsigned char terminal_theme;
 static int terminal_blink_disabled;
-static unsigned char terminal_text[HISTORY_ROWS][TERMINAL_WIDTH];
-static unsigned char terminal_colors[HISTORY_ROWS][TERMINAL_WIDTH];
+static unsigned short terminal_history_handle;
+static unsigned short terminal_current[TERMINAL_WIDTH];
+static unsigned short terminal_view[DISPLAY_HEIGHT][TERMINAL_WIDTH];
 static unsigned long terminal_cursor_row;
 static unsigned char terminal_cursor_column;
 static unsigned long terminal_view_row;
@@ -25,17 +37,6 @@ static unsigned char terminal_status_column;
 static unsigned char terminal_status_prefix_width;
 static unsigned char terminal_status_spinner;
 static unsigned long terminal_status_tick;
-
-static void terminal_set_cursor(unsigned char row, unsigned char column)
-{
-    union REGS input;
-    union REGS output;
-    input.h.ah = 0x02;
-    input.h.bh = 0;
-    input.h.dh = row;
-    input.h.dl = column;
-    int86(0x10, &input, &output);
-}
 
 static unsigned long terminal_oldest_row(void)
 {
@@ -51,11 +52,76 @@ static unsigned long terminal_latest_view_row(void)
     return 0;
 }
 
-static void terminal_clear_row(unsigned long row)
+static unsigned long terminal_row_offset(unsigned long row)
 {
-    unsigned index = (unsigned)(row % HISTORY_ROWS);
-    memset(terminal_text[index], ' ', TERMINAL_WIDTH);
-    memset(terminal_colors[index], terminal_attribute, TERMINAL_WIDTH);
+    return (row % HISTORY_ROWS) * ROW_BYTES;
+}
+
+static unsigned char terminal_style(unsigned char attribute)
+{
+    const liza_theme *theme = &liza_themes[terminal_theme];
+
+    if (attribute == theme->title) return STYLE_TITLE;
+    if (attribute == theme->accent) return STYLE_ACCENT;
+    if (attribute == theme->status) return STYLE_STATUS;
+    if (attribute == theme->ok) return STYLE_OK;
+    if (attribute == theme->error) return STYLE_ERROR;
+    if (attribute == theme->text) return STYLE_TEXT;
+    return STYLE_RAW | (attribute & 0x0f);
+}
+
+static unsigned char terminal_style_attribute(unsigned char style)
+{
+    const liza_theme *theme = &liza_themes[terminal_theme];
+
+    if (style == STYLE_TITLE) return theme->title;
+    if (style == STYLE_ACCENT) return theme->accent;
+    if (style == STYLE_STATUS) return theme->status;
+    if (style == STYLE_OK) return theme->ok;
+    if (style == STYLE_ERROR) return theme->error;
+    if (style == STYLE_TEXT) return theme->text;
+    return (style & 0x0f) | (theme->text & 0xf0);
+}
+
+static unsigned short terminal_cell(unsigned char character, unsigned char attribute)
+{
+    return ((unsigned short)terminal_style(attribute) << 8) | character;
+}
+
+static void terminal_clear_current(void)
+{
+    unsigned column;
+    unsigned short cell = terminal_cell(' ', terminal_attribute);
+
+    for (column = 0; column < TERMINAL_WIDTH; ++column) terminal_current[column] = cell;
+}
+
+static int terminal_store_current(void)
+{
+    return xms_write(terminal_history_handle,
+                     terminal_row_offset(terminal_cursor_row),
+                     (const void __far *)terminal_current, ROW_BYTES);
+}
+
+static int terminal_load_row(unsigned long row, unsigned short *destination)
+{
+    if (row == terminal_cursor_row) {
+        memcpy(destination, terminal_current, ROW_BYTES);
+        return 1;
+    }
+    return xms_read(terminal_history_handle, terminal_row_offset(row),
+                    (void __far *)destination, ROW_BYTES);
+}
+
+static void terminal_set_cursor(unsigned char row, unsigned char column)
+{
+    union REGS input;
+    union REGS output;
+    input.h.ah = 0x02;
+    input.h.bh = 0;
+    input.h.dh = row;
+    input.h.dl = column;
+    int86(0x10, &input, &output);
 }
 
 static void terminal_redraw(void)
@@ -65,24 +131,23 @@ static void terminal_redraw(void)
     unsigned long source_row;
     unsigned short row;
     unsigned short column;
-    unsigned index;
-    unsigned char character;
-    unsigned char color;
+    unsigned short cell;
 
     video = (volatile unsigned short __far *)MK_FP(0xb800, 0);
     for (row = 0; row < DISPLAY_HEIGHT; ++row) {
         source_row = terminal_view_row + row;
+        if (source_row >= oldest && source_row <= terminal_cursor_row)
+            terminal_load_row(source_row, terminal_view[row]);
+        else {
+            unsigned short blank = terminal_cell(' ', terminal_attribute);
+            for (column = 0; column < TERMINAL_WIDTH; ++column)
+                terminal_view[row][column] = blank;
+        }
         for (column = 0; column < TERMINAL_WIDTH; ++column) {
-            if (source_row >= oldest && source_row <= terminal_cursor_row) {
-                index = (unsigned)(source_row % HISTORY_ROWS);
-                character = terminal_text[index][column];
-                color = terminal_colors[index][column];
-            } else {
-                character = ' ';
-                color = terminal_attribute;
-            }
+            cell = terminal_view[row][column];
             video[row * TERMINAL_WIDTH + column] =
-                ((unsigned short)color << 8) | character;
+                ((unsigned short)terminal_style_attribute((unsigned char)(cell >> 8)) << 8) |
+                (unsigned char)cell;
         }
     }
     if (terminal_view_row == terminal_latest_view_row())
@@ -94,9 +159,10 @@ static void terminal_redraw(void)
 
 static void terminal_advance_line(void)
 {
+    terminal_store_current();
     ++terminal_cursor_row;
     terminal_cursor_column = 0;
-    terminal_clear_row(terminal_cursor_row);
+    terminal_clear_current();
 }
 
 static void terminal_put(unsigned char character, unsigned char color)
@@ -111,12 +177,30 @@ static void terminal_put(unsigned char character, unsigned char color)
         spaces = 8 - (terminal_cursor_column & 7);
         while (spaces-- != 0) terminal_put(' ', color);
     } else {
-        terminal_text[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = character;
-        terminal_colors[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = color;
+        terminal_current[terminal_cursor_column] = terminal_cell(character, color);
         ++terminal_cursor_column;
         if (terminal_cursor_column == TERMINAL_WIDTH) terminal_advance_line();
     }
     last_output = character;
+}
+
+int terminal_initialize(void)
+{
+    if (!xms_initialize()) return 0;
+    if (!xms_allocate((unsigned short)HISTORY_KILOBYTES, &terminal_history_handle))
+        return 0;
+    terminal_theme = LIZA_THEME_DEFAULT;
+    terminal_attribute = liza_themes[terminal_theme].text;
+    terminal_reset();
+    return 1;
+}
+
+void terminal_shutdown(void)
+{
+    if (terminal_history_handle != 0) {
+        xms_free(terminal_history_handle);
+        terminal_history_handle = 0;
+    }
 }
 
 void terminal_append(const unsigned char *text, unsigned short length,
@@ -144,9 +228,11 @@ void terminal_write(const char *text)
 static void terminal_status_replace(unsigned char offset, unsigned char character,
                                     unsigned char color)
 {
-    unsigned index = (unsigned)(terminal_status_row % HISTORY_ROWS);
-    terminal_text[index][terminal_status_column + offset] = character;
-    terminal_colors[index][terminal_status_column + offset] = color;
+    unsigned char column = terminal_status_column + offset;
+
+    if (terminal_status_row != terminal_cursor_row || column >= TERMINAL_WIDTH)
+        return;
+    terminal_current[column] = terminal_cell(character, color);
 }
 
 void terminal_status_start(const char *label, const char *detail)
@@ -183,8 +269,7 @@ void terminal_status_finish(int success)
 
     if (!terminal_status_active) return;
     for (i = 0; i < terminal_status_prefix_width; ++i)
-        terminal_status_replace(i, i < strlen(prefix) ? prefix[i] : ' ',
-                                color);
+        terminal_status_replace(i, i < strlen(prefix) ? prefix[i] : ' ', color);
     terminal_status_replace(terminal_cursor_column - terminal_status_column - 1,
                             ' ', color);
     terminal_status_active = 0;
@@ -217,13 +302,12 @@ void terminal_backspace(void)
         --terminal_cursor_column;
     } else if (terminal_cursor_row != 0) {
         --terminal_cursor_row;
+        terminal_load_row(terminal_cursor_row, terminal_current);
         terminal_cursor_column = TERMINAL_WIDTH - 1;
     } else {
         return;
     }
-    terminal_text[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] = ' ';
-    terminal_colors[terminal_cursor_row % HISTORY_ROWS][terminal_cursor_column] =
-        terminal_attribute;
+    terminal_current[terminal_cursor_column] = terminal_cell(' ', terminal_attribute);
     if (follow) {
         terminal_view_row = terminal_latest_view_row();
         terminal_redraw();
@@ -262,13 +346,12 @@ void terminal_handle_key(int key)
 
 void terminal_reset(void)
 {
-    memset(terminal_text, ' ', sizeof(terminal_text));
-    memset(terminal_colors, terminal_attribute, sizeof(terminal_colors));
     terminal_cursor_row = 0;
     terminal_cursor_column = 0;
     terminal_view_row = 0;
     terminal_status_active = 0;
     last_output = '\n';
+    terminal_clear_current();
 }
 
 static void terminal_set_blink(int enabled)
@@ -293,40 +376,16 @@ static void terminal_capture_attribute(void)
     terminal_attribute_known = 1;
 }
 
-static unsigned char terminal_recolor(unsigned char color,
-                                      unsigned char old_index)
-{
-    const liza_theme *old_theme = &liza_themes[old_index];
-    const liza_theme *new_theme = &liza_themes[terminal_theme];
-
-    if (color == old_theme->text) return new_theme->text;
-    if (color == old_theme->title) return new_theme->title;
-    if (color == old_theme->accent) return new_theme->accent;
-    if (color == old_theme->status) return new_theme->status;
-    if (color == old_theme->ok) return new_theme->ok;
-    if (color == old_theme->error) return new_theme->error;
-    return (color & 0x0f) | (new_theme->text & 0xf0);
-}
-
 void terminal_apply_theme(unsigned char index)
 {
-    unsigned char old_index = terminal_theme;
-    unsigned row;
-    unsigned column;
-
     if (index >= LIZA_THEME_COUNT) return;
     terminal_capture_attribute();
     terminal_theme = index;
     terminal_attribute = liza_themes[index].text;
     if (!terminal_blink_disabled) {
-        /* Intensity instead of blink: allows bright background colors. */
         terminal_set_blink(0);
         terminal_blink_disabled = 1;
     }
-    for (row = 0; row < HISTORY_ROWS; ++row)
-        for (column = 0; column < TERMINAL_WIDTH; ++column)
-            terminal_colors[row][column] =
-                terminal_recolor(terminal_colors[row][column], old_index);
     terminal_redraw();
 }
 

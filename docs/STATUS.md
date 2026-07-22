@@ -15,12 +15,12 @@
 - [x] Sandboxed host-side `run_python` execution with common scientific
   libraries
 - [x] Host-side timeout for DOS command and file operations
-- [x] Streaming line-level Markdown rendering through direct VGA attributes
+- [x] Streaming Markdown rendering with tab-aligned tables through direct VGA attributes
 - [x] Streamed assistant output and Normal-mode command display filtering
 - [x] One-shot `LIZA prompt` DOS mode
 - [x] Scrolling interactive `LIZA` DOS mode with `/NEW`, `/EXIT`, and Esc cancel
 - [x] Runtime `/MODEL`, `/EFFORT`, and `/STATUS` commands
-- [x] 150-line display history with Up/Down/PgUp/PgDn/Home/End scrolling
+- [x] 16,384-line XMS-backed display history with Up/Down/PgUp/PgDn/Home/End scrolling
 - [x] Synchronous stdout/stderr capture and chunked return without retaining long
   command output in DOS conventional memory
 - [x] Per-invocation current directory, drive, and environment persistence

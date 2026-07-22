@@ -19,7 +19,7 @@ export const terminalWidth = 80;
 export const promptSize = 512;
 export const commandSize = 128;
 export const displayHeight = 25;
-export const historyRows = 150;
+export const historyRows = 16384;
 
 export enum MessageType {
   Hello = 1,

@@ -47,3 +47,24 @@ test("does not repeat the list prefix inside inline styled spans", () => {
     [TextStyle.Normal, "\n"],
   ]);
 });
+
+test("renders Markdown tables as tab-aligned terminal rows", () => {
+  const spans: Array<[TextStyle, string]> = [];
+  const renderer = new MarkdownRenderer({ write: (style, text) => spans.push([style, text]) });
+  renderer.feed("Name | Type | Size\n---- | ---- | ----\nLIZA.EXE | Program | 73 KB\n");
+  renderer.finish();
+
+  assert.equal(spans.map(([, text]) => text).join(""),
+    "Name\tType\tSize\n--------\t-------\t-----\nLIZA.EXE\tProgram\t73 KB\n");
+  assert.equal(spans[0]?.[0], TextStyle.Heading);
+  assert.ok(spans.some(([style]) => style === TextStyle.Quote));
+});
+
+test("does not swallow a non-table line containing a pipe", () => {
+  const spans: Array<[TextStyle, string]> = [];
+  const renderer = new MarkdownRenderer({ write: (style, text) => spans.push([style, text]) });
+  renderer.feed("Use a | b for bitwise OR\nNext\n");
+  renderer.finish();
+
+  assert.equal(spans.map(([, text]) => text).join(""), "Use a | b for bitwise OR\nNext\n");
+});

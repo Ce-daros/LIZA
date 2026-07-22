@@ -16,7 +16,7 @@ guest. Python runs in a sandboxed process on the Windows host.
 - Node.js 22.19 or newer
 - Open Watcom 16-bit DOS compiler at `C:\WATCOM16` (to build the DOS client)
 - Python 3 on `PATH` for `run_python` (NumPy, SciPy, pandas, Matplotlib, SymPy)
-- MS-DOS 6.22 guest with an emulated COM1 connection
+- MS-DOS 6.22 guest with an emulated COM1 connection and `HIMEM.SYS` loaded
 - `MIMO_API_KEY` in the host environment
 - `OPENROUTER_API_KEY` in the host environment to use `/MODEL ds`
 - `TAVILY_API_KEY` in the host environment for web search and URL fetching
@@ -90,7 +90,7 @@ the active model turn. Successful command output is
 captured for Pi and remains hidden. `CD`, drive changes, and `SET` persist until
 that particular `LIZA.EXE` process exits.
 
-LIZA retains the most recent 150 display lines. Up and Down scroll one line,
+LIZA retains the most recent 16,384 display lines in XMS extended memory. Up and Down scroll one line,
 PgUp and PgDn scroll 20 lines, and Home and End jump to the oldest and newest
 retained output. New output follows automatically only while viewing the latest
 screen.
@@ -118,8 +118,9 @@ theme is `default` (black background); `/THEME` lists the themes defined in
 Tool activity stays on one line: `[EXEC]`, `[READ]`, `[WRITE]`, `[FILES]`,
 `[SEARCH]`, `[FETCH]`, and `[PYTHON]` animate while running and become `[OK]`
 or `[FAIL]` when complete. Version 0.1 styles headings, bold and emphasis,
-inline and fenced code, lists, task lists, quotes, horizontal rules, and links
-using VGA attributes. Links are display-only. Images, HTML, tables, math,
+inline and fenced code, lists, task lists, quotes, horizontal rules, links, and
+tables using VGA attributes. Tables use tab-aligned, wrapped 80-column text.
+Links are display-only. Images, HTML, math,
 diagrams, and arbitrary CSS are not rendered.
 
 The complete wire specification is in `protocol\PROTOCOL.md`.
