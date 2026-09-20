@@ -13,7 +13,11 @@
 
 extern int putenv(const char *);
 
-#define CAPTURE_FILE "LIZAOUT.$$$"
+#define MAX_SET_ENV_VARS 32
+#define MAX_SET_ENV_LINE 127
+
+static char env_lines[MAX_SET_ENV_VARS][MAX_SET_ENV_LINE + 1];
+static unsigned env_line_count;
 
 int commands_same_word(const char *text, const char *word)
 {
@@ -49,9 +53,9 @@ static char *unquote(char *text)
     return text;
 }
 
-static int write_capture(const char *message, int result)
+static int write_capture(const char *capture_file, const char *message, int result)
 {
-    FILE *file = fopen(CAPTURE_FILE, "wb");
+    FILE *file = fopen(capture_file, "wb");
     if (file == NULL) return 1;
     if (fputs(message, file) == EOF) {
         fclose(file);
@@ -61,7 +65,7 @@ static int write_capture(const char *message, int result)
     return result;
 }
 
-static int execute_state_command(char *command)
+static int execute_state_command(const char *capture_file, char *command)
 {
     char *argument;
     int drive;
@@ -73,31 +77,32 @@ static int execute_state_command(char *command)
         if (*argument == '\0') {
             char cwd[80];
             if (getcwd(cwd, sizeof(cwd)) != NULL) {
-                FILE *file = fopen(CAPTURE_FILE, "wb");
+                FILE *file = fopen(capture_file, "wb");
                 if (file != NULL) {
                     fprintf(file, "%s\r\n", cwd);
                     fclose(file);
                     return 0;
                 }
             }
-            return write_capture("Unable to read current directory.\r\n", 1);
+            return write_capture(capture_file, "Unable to read current directory.\r\n", 1);
         }
         if (chdir(unquote(argument)) == 0) return write_capture("", 0);
         return write_capture("Invalid directory.\r\n", 1);
     }
 
     if (commands_same_word(command, "SET")) {
-        char *env_line;
         argument = commands_skip_spaces(command + 3);
         if (*argument == '\0') return -1;
-        /* putenv keeps the pointer, so the buffer must outlive this call;
-           DOS has no clean unsetenv, so the old allocation is leaked. */
-        env_line = malloc(strlen(argument) + 1);
-        if (env_line == NULL)
-            return write_capture("Out of memory.\r\n", 1);
-        strcpy(env_line, argument);
-        if (putenv(env_line) == 0) return write_capture("", 0);
-        return write_capture("Unable to set environment variable.\r\n", 1);
+        if (env_line_count >= MAX_SET_ENV_VARS)
+            return write_capture(capture_file, "Environment variable limit reached.\r\n", 1);
+        if (strlen(argument) > MAX_SET_ENV_LINE)
+            return write_capture(capture_file, "Environment variable is too long.\r\n", 1);
+        strcpy(env_lines[env_line_count], argument);
+        if (putenv(env_lines[env_line_count]) == 0) {
+            ++env_line_count;
+            return write_capture(capture_file, "", 0);
+        }
+        return write_capture(capture_file, "Unable to set environment variable.\r\n", 1);
     }
 
     if (command[0] && command[1] == ':' && command[2] == '\0') {
@@ -109,22 +114,22 @@ static int execute_state_command(char *command)
     return -1;
 }
 
-static int execute_captured(char *command)
+static int execute_captured(const char *capture_file, char *command)
 {
     int output_fd;
     int saved_stdout;
     int saved_stderr;
     int result;
 
-    remove(CAPTURE_FILE);
-    result = execute_state_command(command);
+    remove(capture_file);
+    result = execute_state_command(capture_file, command);
     if (result >= 0) return result;
 
     fflush(stdout);
     fflush(stderr);
     saved_stdout = dup(1);
     saved_stderr = dup(2);
-    output_fd = open(CAPTURE_FILE, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY,
+    output_fd = open(capture_file, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY,
                      S_IREAD | S_IWRITE);
     if (saved_stdout < 0 || saved_stderr < 0 || output_fd < 0) {
         if (saved_stdout >= 0) close(saved_stdout);
@@ -154,32 +159,43 @@ static int return_command_result(unsigned short sequence, char *command)
     unsigned char buffer[LIZA_FILE_CHUNK_BYTES];
     unsigned char ending[3 + LIZA_MAX_PATH_BYTES + 1];
     char cwd[LIZA_MAX_PATH_BYTES];
+    char capture_file[L_tmpnam];
     unsigned short count;
     int result;
     int complete = 1;
 
-    link_own_status_start("EXEC", command);
-    result = execute_captured(command);
-    link_own_status_finish(result == 0);
-    link_begin_host_wait();
-    file = fopen(CAPTURE_FILE, "rb");
-    if (file != NULL) {
-        while ((count = (unsigned short)fread(buffer, 1, sizeof(buffer), file)) != 0)
-            if (!link_send_at(LIZA_EXEC_RESULT_CHUNK, sequence, buffer, count)) {
-                fclose(file);
-                remove(CAPTURE_FILE);
-                return 0;
-            }
-        fclose(file);
-    } else {
+    if (tmpnam(capture_file) == NULL) {
+        link_own_status_start("EXEC", command);
+        link_own_status_finish(0);
+        link_begin_host_wait();
+        result = 1;
         complete = 0;
         if (!link_send_at(LIZA_EXEC_RESULT_CHUNK, sequence, lost_message,
-                          sizeof(lost_message) - 1)) {
-            remove(CAPTURE_FILE);
-            return 0;
+                          sizeof(lost_message) - 1)) return 0;
+    } else {
+        link_own_status_start("EXEC", command);
+        result = execute_captured(capture_file, command);
+        link_own_status_finish(result == 0);
+        link_begin_host_wait();
+        file = fopen(capture_file, "rb");
+        if (file != NULL) {
+            while ((count = (unsigned short)fread(buffer, 1, sizeof(buffer), file)) != 0)
+                if (!link_send_at(LIZA_EXEC_RESULT_CHUNK, sequence, buffer, count)) {
+                    fclose(file);
+                    remove(capture_file);
+                    return 0;
+                }
+            fclose(file);
+        } else {
+            complete = 0;
+            if (!link_send_at(LIZA_EXEC_RESULT_CHUNK, sequence, lost_message,
+                              sizeof(lost_message) - 1)) {
+                remove(capture_file);
+                return 0;
+            }
         }
+        remove(capture_file);
     }
-    remove(CAPTURE_FILE);
     ending[0] = result & 0xff;
     ending[1] = (result >> 8) & 0xff;
     ending[2] = (unsigned char)complete;
