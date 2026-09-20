@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { maxOutputChars } from "./protocol.generated.js";
 import { isTavilyMisconfigured, type TavilyClient } from "./tavily-client.js";
 
 export function createTavilySearchTool(client: TavilyClient) {
@@ -24,15 +25,18 @@ export function createTavilySearchTool(client: TavilyClient) {
           timeRange: params.time_range,
           includeRawContent: params.include_raw_content,
         });
-        const sections = [
-          `Query: ${params.query}`,
-          ...(payload.answer ? [`Answer:\n${payload.answer}`] : []),
-          "Sources:",
-          ...payload.results.map((result) => `- ${result.title}\n  ${result.url}\n  ${result.content}`),
-        ];
+        const text = formatSearchOutput(params.query, payload.answer, payload.results);
+        const details = {
+          ...payload,
+          answer: payload.answer?.slice(0, maxOutputChars),
+          results: payload.results.map((result) => ({
+            ...result,
+            content: result.content.slice(0, maxOutputChars),
+          })),
+        };
         return {
-          content: [{ type: "text" as const, text: sections.join("\n") }],
-          details: payload,
+          content: [{ type: "text" as const, text }],
+          details,
         };
       } catch (error) {
         if (isTavilyMisconfigured(error)) throw new Error("TAVILY_API_KEY is not configured", { cause: error });
@@ -40,4 +44,26 @@ export function createTavilySearchTool(client: TavilyClient) {
       }
     },
   });
+}
+
+function formatSearchOutput(
+  query: string,
+  answer: string | undefined,
+  results: readonly { title: string; url: string; content: string }[],
+): string {
+  const sections = [
+    `Query: ${query}`,
+    ...(answer ? [`Answer:\n${answer}`] : []),
+    "Sources:",
+  ];
+  let text = sections.join("\n");
+  for (const result of results) {
+    const block = `- ${result.title}\n  ${result.url}\n  ${result.content}`;
+    const separator = "\n";
+    if (text.length + separator.length >= maxOutputChars) break;
+    const remaining = maxOutputChars - text.length - separator.length;
+    text += separator + block.slice(0, remaining);
+    if (block.length > remaining) break;
+  }
+  return text;
 }
