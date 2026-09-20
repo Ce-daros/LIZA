@@ -29,7 +29,7 @@ export function createTavilySearchTool(client: TavilyClient) {
         let detailsRemaining = maxOutputChars;
         const detailsAnswer = payload.answer?.slice(0, detailsRemaining);
         detailsRemaining -= detailsAnswer?.length ?? 0;
-        const detailsResults = [];
+        const detailsResults: Array<{ title: string; url: string; content: string }> = [];
         for (const result of payload.results) {
           if (detailsRemaining <= 0) break;
           const content = result.content.slice(0, detailsRemaining);
