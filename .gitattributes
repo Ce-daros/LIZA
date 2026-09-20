@@ -1,2 +1,4 @@
 host/protocol.generated.ts text eol=lf
-dos/proto_gen.h text eol=lf
+dos/proto_gen.h text eol=lfREADME.md text eol=lf
+docs/STATUS.md text eol=lf
+protocol/PROTOCOL.md text eol=lf
