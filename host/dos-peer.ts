@@ -23,6 +23,8 @@ import {
 
 interface PendingExecution extends PendingRequest {
   chunks: Buffer[];
+  outputBytes: number;
+  truncated: boolean;
   resolve(result: ShellResult): void;
 }
 
@@ -84,7 +86,7 @@ export class DosPeer {
     if (payload.length === 0 || payload.length > 126) throw new RangeError("DOS command must contain 1 to 126 bytes");
     const sequence = this.allocateSequence();
     return new Promise<ShellResult>((resolve, reject) => {
-      this.executions.add(sequence, "DOS command", { chunks: [], resolve, reject });
+      this.executions.add(sequence, "DOS command", { chunks: [], outputBytes: 0, truncated: false, resolve, reject });
       this.sendFrame(MessageType.ExecRequest, sequence, payload);
     });
   }
@@ -251,7 +253,10 @@ export class DosPeer {
   }
 
   private receivePromptEnd(frame: Frame): void {
-    if (this.promptOverflow.delete(frame.sequence)) return;
+    if (this.promptOverflow.delete(frame.sequence)) {
+      this.sendComplete(frame.sequence);
+      return;
+    }
     const chunks = this.promptChunks.get(frame.sequence) ?? [];
     this.promptChunks.delete(frame.sequence);
     const prompt = Buffer.concat(chunks).toString("ascii");
@@ -264,15 +269,29 @@ export class DosPeer {
       this.sendError(frame.sequence, "No matching DOS command");
       return;
     }
-    pending.chunks.push(Buffer.from(frame.payload));
+    const remaining = maxOutputChars - pending.outputBytes;
+    if (remaining <= 0) {
+      pending.truncated = true;
+      return;
+    }
+    const chunk = frame.payload.subarray(0, remaining);
+    pending.chunks.push(Buffer.from(chunk));
+    pending.outputBytes += chunk.length;
+    pending.truncated ||= chunk.length < frame.payload.length;
   }
 
   private receiveExecEnd(frame: Frame): void {
-    const pending = this.executions.take(frame.sequence);
-    if (!pending) {
+    const active = this.executions.get(frame.sequence);
+    if (!active) {
       this.sendError(frame.sequence, "No matching DOS command");
       return;
     }
+    if (frame.payload.length < 2) {
+      const pending = this.executions.take(frame.sequence);
+      pending?.reject(new Error("Invalid DOS command result"));
+      return;
+    }
+    const pending = this.executions.take(frame.sequence)!;
     const hasFlag = frame.payload.length >= 3 && (frame.payload[2] === 0 || frame.payload[2] === 1);
     const cwdStart = hasFlag ? 3 : 2;
     const cwd = frame.payload.subarray(cwdStart).toString("ascii");
@@ -280,7 +299,7 @@ export class DosPeer {
       output: Buffer.concat(pending.chunks).toString("ascii"),
       exitCode: decodeExitCode(frame.payload),
       cwd,
-      complete: hasFlag ? frame.payload[2] !== 0 : true,
+      complete: (hasFlag ? frame.payload[2] !== 0 : true) && !pending.truncated,
     });
   }
 
