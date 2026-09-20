@@ -51,12 +51,11 @@ function formatSearchOutput(
   answer: string | undefined,
   results: readonly { title: string; url: string; content: string }[],
 ): string {
-  const sections = [
-    `Query: ${query}`,
-    ...(answer ? [`Answer:\n${answer}`] : []),
-    "Sources:",
-  ];
-  let text = sections.join("\n");
+  let text = `Query: ${query}`;
+  if (answer && text.length < maxOutputChars) {
+    text += `\nAnswer:\n${answer.slice(0, Math.max(0, maxOutputChars - text.length - 8))}`;
+  }
+  if (text.length < maxOutputChars) text += "\nSources:";
   for (const result of results) {
     const block = `- ${result.title}\n  ${result.url}\n  ${result.content}`;
     const separator = "\n";
