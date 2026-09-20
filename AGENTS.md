@@ -20,9 +20,9 @@ default); the wire format is specified in `protocol/PROTOCOL.md`.
     `main.ts`, `tavily-client.ts` (TAVILY SDK wrapper with p-retry).
   - Tests live alongside as `*.test.ts`; a shared TAVILY stub lives at
     `host/test-helpers/tavily.ts`.
-- `dos/` — 16-bit real-mode C89 client source.
+- `dos/` — 16-bit real-mode C89 client source, manually built with Open Watcom via `dos/Makefile`.
 - `protocol/` — serial protocol specification.
-- `tools/` — `create_dos_floppy.py`, `generate_protocol.mjs` (codegen from
+- `tools/` — `build_dos.ps1` (manual DOS client + floppy image build), `create_dos_floppy.py`, `generate_protocol.mjs` (codegen from
   `protocol/schema.json`),
   `generate_themes.mjs` (codegen from `config/themes.json` into
   `dos/themes_gen.h`; run `npm run themes:generate` after editing themes),
@@ -39,6 +39,8 @@ default); the wire format is specified in `protocol/PROTOCOL.md`.
 - `npm test` — host/protocol unit tests only.
 - `npm run host` — start the host. Needs `OPENROUTER_API_KEY` if you intend
   to use the `ds` alias; `TAVILY_API_KEY` is required for the web tools.
+- `npm run build:dos` — manually rebuild the DOS client and floppy image with
+  Open Watcom. Use `-Watcom <path>` for a non-default installation.
 
 ## Conventions
 
