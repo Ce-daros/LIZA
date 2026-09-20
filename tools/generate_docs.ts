@@ -30,7 +30,8 @@ async function replaceSection(file: string, name: string, generated: string): Pr
   if (!source.includes(start)) throw new Error(`${file} is missing the ${name} start marker`);
   if (!source.includes(end)) throw new Error(`${file} is missing the ${name} end marker`);
   const pattern = new RegExp(`${escape(start)}[\\s\\S]*?${escape(end)}`);
-  const content = source.replace(pattern, `${start}\n${generated}\n${end}`);
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const content = source.replace(pattern, `${start}${newline}${generated}${newline}${end}`);
   return { file, content, changed: content !== source };
 }
 
