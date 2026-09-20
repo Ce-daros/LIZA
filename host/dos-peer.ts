@@ -19,6 +19,7 @@ import {
   toolStatusLabelBytes,
   toolStatusDetailBytes,
   maxPromptBytes,
+  maxOutputChars,
 } from "./protocol.generated.js";
 
 interface PendingExecution extends PendingRequest {
