@@ -9,7 +9,17 @@
     "rootDir": ".",
     "sourceMap": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["host/**/*.ts", "tools/**/*.ts"]
+  "include": [
+    "host/**/*.ts",
+    "tools/**/*.ts"
+  ],
+  "exclude": [
+    "host/**/*.test.ts",
+    "host/test-support/**/*.ts",
+    "host/test-helpers/**/*.ts"
+  ]
 }
