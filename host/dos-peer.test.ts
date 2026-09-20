@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DosPeer } from "./dos-peer.js";
 import { ClientMode, Frame, FrameDecoder, MessageType } from "./protocol.js";
-import { encodeExitCode } from "./dos-simulator.js";
+import { encodeExitCode } from "./test-support/dos-simulator.js";
 
 function decodeWire(wire: Buffer): Frame {
   const frames = new FrameDecoder().push(wire);
