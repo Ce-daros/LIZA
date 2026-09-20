@@ -26,14 +26,17 @@ export function createTavilySearchTool(client: TavilyClient) {
           includeRawContent: params.include_raw_content,
         });
         const text = formatSearchOutput(params.query, payload.answer, payload.results);
-        const details = {
-          ...payload,
-          answer: payload.answer?.slice(0, maxOutputChars),
-          results: payload.results.map((result) => ({
-            ...result,
-            content: result.content.slice(0, maxOutputChars),
-          })),
-        };
+        let detailsRemaining = maxOutputChars;
+        const detailsAnswer = payload.answer?.slice(0, detailsRemaining);
+        detailsRemaining -= detailsAnswer?.length ?? 0;
+        const detailsResults = [];
+        for (const result of payload.results) {
+          if (detailsRemaining <= 0) break;
+          const content = result.content.slice(0, detailsRemaining);
+          detailsResults.push({ ...result, content });
+          detailsRemaining -= content.length;
+        }
+        const details = { answer: detailsAnswer, results: detailsResults };
         return {
           content: [{ type: "text" as const, text }],
           details,
