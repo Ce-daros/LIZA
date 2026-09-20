@@ -8,6 +8,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const protocol = JSON.parse(await readFile(path.join(root, "protocol", "schema.json"), "utf8")) as ProtocolSchema;
 const tools = createLizaToolRegistry(inertPort()).names;
 const toolList = tools.map((name) => `\`${name}\``).join(", ");
+console.error(JSON.stringify({toolNames: tools, toolCount: tools.length, toolList}));
 const changes = [
   replaceSection("README.md", "tools", `The DOS program displays the conversation and exposes ${tools.length} sequential tools:\n${toolList}.`),
   replaceSection("docs/STATUS.md", "tools", `- [x] ${tools.length} schema-constrained sequential tools: ${toolList}`),
