@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DosPeer } from "./dos-peer.js";
 import { ClientMode, Frame, FrameDecoder, MessageType } from "./protocol.js";
+import { maxOutputChars } from "./protocol.generated.js";
 import { encodeExitCode } from "./test-support/dos-simulator.js";
 
 function decodeWire(wire: Buffer): Frame {
@@ -275,4 +276,39 @@ test("rejects a prompt whose chunks exceed the 64 KiB budget and drops the rest"
   const errors = sent.filter((frame) => frame.type === MessageType.Error);
   assert.equal(errors.length, 1);
   assert.match(errors[0]!.payload.toString("ascii"), /65536/);
+  assert.deepEqual(sent.filter((frame) => frame.type === MessageType.Complete).map((frame) => frame.sequence), [6]);
+});
+
+
+test("rejects a malformed EXEC_RESULT_END without orphaning the pending command", async () => {
+  let peer: DosPeer;
+  peer = new DosPeer((wire) => {
+    const request = decodeWire(wire);
+    peer.receive({
+      type: MessageType.ExecResultEnd,
+      sequence: request.sequence,
+      payload: Buffer.of(0),
+    });
+  });
+  await assert.rejects(peer.execute("DIR"), /Invalid DOS command result/);
+});
+
+test("caps DOS command output while continuing to complete the operation", async () => {
+  let peer: DosPeer;
+  peer = new DosPeer((wire) => {
+    const request = decodeWire(wire);
+    peer.receive({
+      type: MessageType.ExecResultChunk,
+      sequence: request.sequence,
+      payload: Buffer.alloc(maxOutputChars + 100, 0x41),
+    });
+    peer.receive({
+      type: MessageType.ExecResultEnd,
+      sequence: request.sequence,
+      payload: Buffer.concat([encodeExitCode(0), Buffer.from([1]), Buffer.from("C:\\DOS")]),
+    });
+  });
+  const result = await peer.execute("DIR");
+  assert.equal(result.output.length, maxOutputChars);
+  assert.equal(result.complete, false);
 });
