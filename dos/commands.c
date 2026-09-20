@@ -86,8 +86,8 @@ static int execute_state_command(const char *capture_file, char *command)
             }
             return write_capture(capture_file, "Unable to read current directory.\r\n", 1);
         }
-        if (chdir(unquote(argument)) == 0) return write_capture("", 0);
-        return write_capture("Invalid directory.\r\n", 1);
+        if (chdir(unquote(argument)) == 0) return write_capture(capture_file, "", 0);
+        return write_capture(capture_file, "Invalid directory.\r\n", 1);
     }
 
     if (commands_same_word(command, "SET")) {
@@ -108,8 +108,8 @@ static int execute_state_command(const char *capture_file, char *command)
     if (command[0] && command[1] == ':' && command[2] == '\0') {
         drive = (command[0] | 0x20) - 'a' + 1;
         if (drive >= 1 && drive <= 26 && _chdrive(drive) == 0)
-            return write_capture("", 0);
-        return write_capture("Invalid drive.\r\n", 1);
+            return write_capture(capture_file, "", 0);
+        return write_capture(capture_file, "Invalid drive.\r\n", 1);
     }
     return -1;
 }
@@ -135,7 +135,7 @@ static int execute_captured(const char *capture_file, char *command)
         if (saved_stdout >= 0) close(saved_stdout);
         if (saved_stderr >= 0) close(saved_stderr);
         if (output_fd >= 0) close(output_fd);
-        write_capture("Unable to capture command output.\r\n", 1);
+        write_capture(capture_file, "Unable to capture command output.\r\n", 1);
         return 1;
     }
     dup2(output_fd, 1);
