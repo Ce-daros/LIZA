@@ -31,8 +31,8 @@ async function replaceSection(file: string, name: string, generated: string): Pr
   if (!source.includes(end)) throw new Error(`${file} is missing the ${name} end marker`);
   const pattern = new RegExp(`${escape(start)}[\\s\\S]*?${escape(end)}`);
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
-  const content = source.replace(pattern, `${start}${newline}${generated}${newline}${end}`);
-  if (file === "README.md") console.error(JSON.stringify({ hasCRLF: source.includes("\r\n"), current: source.match(pattern)?.[0], replacement: `${start}${newline}${generated}${newline}${end}` }));
+  const rendered = generated.replace(/\n/g, newline);
+  const content = source.replace(pattern, `${start}${newline}${rendered}${newline}${end}`);
   return { file, content, changed: content !== source };
 }
 
