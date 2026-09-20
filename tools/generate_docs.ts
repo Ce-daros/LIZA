@@ -8,7 +8,6 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const protocol = JSON.parse(await readFile(path.join(root, "protocol", "schema.json"), "utf8")) as ProtocolSchema;
 const tools = createLizaToolRegistry(inertPort()).names;
 const toolList = tools.map((name) => `\`${name}\``).join(", ");
-console.error(JSON.stringify({toolNames: tools, toolCount: tools.length, toolList}));
 const changes = [
   replaceSection("README.md", "tools", `The DOS program displays the conversation and exposes ${tools.length} sequential tools:\n${toolList}.`),
   replaceSection("docs/STATUS.md", "tools", `- [x] ${tools.length} schema-constrained sequential tools: ${toolList}`),
@@ -33,6 +32,7 @@ async function replaceSection(file: string, name: string, generated: string): Pr
   const pattern = new RegExp(`${escape(start)}[\\s\\S]*?${escape(end)}`);
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
   const content = source.replace(pattern, `${start}${newline}${generated}${newline}${end}`);
+  if (file === "README.md") console.error(JSON.stringify({ hasCRLF: source.includes("\r\n"), current: source.match(pattern)?.[0], replacement: `${start}${newline}${generated}${newline}${end}` }));
   return { file, content, changed: content !== source };
 }
 
