@@ -14,6 +14,7 @@ guest. Python runs in a sandboxed process on the Windows host.
 
 - Windows 11 and 86Box 5.4
 - Node.js 22.19 or newer
+- Open Watcom 16-bit DOS compiler at `C:\\WATCOM16` (only for the manual DOS build)
 - Python 3 on `PATH` for `run_python` (NumPy, SciPy, pandas, Matplotlib, SymPy)
 - MS-DOS 6.22 guest with an emulated COM1 connection and `HIMEM.SYS` loaded
 - `MIMO_API_KEY` in the host environment
@@ -64,6 +65,14 @@ reasoning-content replay are enabled for LIZA's tools. The model also supports
 JSON structured output when a future tool needs it.
 
 ## DOS client
+
+Build the DOS executable and floppy image manually when Open Watcom is installed:
+
+```powershell
+npm run build:dos
+```
+
+Use `-Watcom <path>` to select a non-default Open Watcom installation. The normal host build and CI checks do not build the DOS client.
 
 ```dos
 C:\>LIZA what's your name?
