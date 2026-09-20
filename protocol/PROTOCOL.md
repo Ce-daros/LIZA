@@ -27,7 +27,6 @@ belonging to that operation use the same sequence.
 | ---: | --- | --- | --- |
 | 1 | `HELLO` | DOS to host | client identifier |
 | 2 | `HELLO_ACK` | host to DOS | server identifier; same sequence |
-| 3 | `TEXT` | either | reserved Phase 1 diagnostic |
 | 4 | `ERROR` | either | compact error text |
 | 5 | `DISCONNECT` | either | empty |
 | 6 | `SESSION_START` | DOS to host | mode byte followed by current directory |
@@ -124,6 +123,6 @@ locally without sending this frame.
 HELLO seq=1 payload="LIZA-DOS/0.1"
 4c5a010101000c004c495a412d444f532f302e314068
 
-TEXT seq=2 payload="hello"
-4c5a01030200050068656c6c6f2bc1
+ERROR seq=2 payload="hello"
+4c5a01040200050068656c6c6fd1dd
 ```
