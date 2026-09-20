@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createTavilySearchTool } from "./tavily-search.js";
 import { fakeSearchResult, stubTavilyClient } from "./test-helpers/tavily.js";
+import { maxOutputChars } from "./protocol.generated.js";
 
 const originalKey = process.env.TAVILY_API_KEY;
 afterEach(() => {
@@ -56,4 +57,16 @@ test("omitted answer section is not rendered", async () => {
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
   assert.doesNotMatch(text, /Answer:/);
   assert.match(text, /- Only result\n  https:\/\/x\n  body/);
+});
+
+test("caps rendered search output even when raw content is very large", async () => {
+  process.env.TAVILY_API_KEY = "test-key";
+  const { client } = stubTavilyClient({
+    search: async () => fakeSearchResult({
+      results: [{ title: "Huge", url: "https://example.com", content: "x".repeat(maxOutputChars * 2) }],
+    }),
+  });
+  const result = await invokeSearch(client, { query: "x", include_raw_content: "text" });
+  const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+  assert.ok(text.length <= maxOutputChars);
 });
