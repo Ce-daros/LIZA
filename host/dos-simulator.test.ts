@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DosPeer } from "./dos-peer.js";
-import { LizaDosSimulator } from "./dos-simulator.js";
+import { LizaDosSimulator } from "./test-support/dos-simulator.js";
 import { ClientMode, encodeFrame, FrameDecoder, MessageType, TextStyle } from "./protocol.js";
 
 function bindHostPeer(simulator: LizaDosSimulator): DosPeer {
