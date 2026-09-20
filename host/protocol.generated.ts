@@ -15,16 +15,10 @@ export const maxPathBytes = 67;
 export const maxContentChars = 12000;
 export const defaultReconnectDelayMs = 1000;
 export const maxOutputChars = 12000;
-export const terminalWidth = 80;
-export const promptSize = 512;
-export const commandSize = 128;
-export const displayHeight = 25;
-export const historyRows = 16384;
 
 export enum MessageType {
   Hello = 1,
   HelloAck = 2,
-  Text = 3,
   Error = 4,
   Disconnect = 5,
   SessionStart = 6,
