@@ -13,19 +13,17 @@ default); the wire format is specified in `protocol/PROTOCOL.md`.
     `file-tools.ts`, `python-tool.ts`, `tavily-search.ts`, `fetch-url.ts`.
     `dos-tool.ts` is covered by its own tests in `host/dos-tool.test.ts`; the
     end-to-end wire format is exercised through `controller.test.ts`.
-  - Protocol / transport: `controller.ts`, `dos-peer.ts`, `dos-ascii.ts`,
-    `protocol.ts`, `dos-simulator.ts` (test-only DOS-end simulator).
+  - Protocol / transport: `controller.ts`, `dos-peer.ts`, `dos-ascii.ts`, `protocol.ts`.
   - Coordination primitives: `inbound-queue.ts`, `pending-requests.ts`.
   - Other: `pi-driver.ts` (Pi session lifecycle), `models-config.ts`
     (alias loader for `config/models.json`), `markdown-renderer.ts`,
     `main.ts`, `tavily-client.ts` (TAVILY SDK wrapper with p-retry).
   - Tests live alongside as `*.test.ts`; a shared TAVILY stub lives at
     `host/test-helpers/tavily.ts`.
-- `dos/` — 16-bit real-mode C89 client built with Open Watcom (`wmake`, see
-  `dos/Makefile`).
+- `dos/` — 16-bit real-mode C89 client source.
 - `protocol/` — serial protocol specification.
-- `tools/` — `build_dos.ps1` (client + floppy image), `create_dos_floppy.py`,
-  `generate_protocol.mjs` (codegen from `protocol/schema.json`),
+- `tools/` — `create_dos_floppy.py`, `generate_protocol.mjs` (codegen from
+  `protocol/schema.json`),
   `generate_themes.mjs` (codegen from `config/themes.json` into
   `dos/themes_gen.h`; run `npm run themes:generate` after editing themes),
   `generate_docs.ts` (regenerates the auto-marked tool / message blocks in
@@ -41,14 +39,12 @@ default); the wire format is specified in `protocol/PROTOCOL.md`.
 - `npm test` — host/protocol unit tests only.
 - `npm run host` — start the host. Needs `OPENROUTER_API_KEY` if you intend
   to use the `ds` alias; `TAVILY_API_KEY` is required for the web tools.
-- `npm run build:dos` — rebuild `LIZA.EXE` and `dos/LIZA-DOS.img`. Needs Open
-  Watcom at `C:\WATCOM16` (or `-Watcom <path>`).
 
 ## Conventions
 
 - Tests assert behavior, never tool names or schema self-checks. Every test
-  must pass on a clean machine: no Open Watcom, no serial hardware, no
-  network, no API keys. Guard anything environment-dependent with `skip`.
+  must pass on a clean machine: no serial hardware, no network, no API keys.
+  Guard anything environment-dependent with `skip`.
 - New model tools: `defineTool` from `@earendil-works/pi-coding-agent`,
   `executionMode: "sequential"`, bounded parameters, registered in
   `host/tool-registry.ts`. The canonical tool list is generated from the

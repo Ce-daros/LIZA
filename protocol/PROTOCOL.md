@@ -14,11 +14,9 @@ converted to printable DOS-safe ASCII before transmission.
 | 4 | 2 | sequence number |
 | 6 | 2 | payload length, at most 1024 |
 | 8 | n | payload |
-| 8+n | 2 | CRC-16/CCITT-FALSE over bytes 2 through 7+n |
 
-CRC uses polynomial `0x1021`, initial value `0xFFFF`, no reflection, and no
-final XOR. A sequence identifies a logical prompt or shell request. All chunks
-belonging to that operation use the same sequence.
+A sequence identifies a logical prompt or shell request. All chunks belonging to
+that operation use the same sequence.
 
 ## Messages
 
@@ -108,8 +106,8 @@ locally without sending this frame.
 ## Recovery
 
 - Discard bytes before a valid sync pair.
-- Reject unsupported versions, payloads over 1024 bytes, and CRC mismatches;
-  resume scanning one byte after the candidate sync.
+- Reject unsupported versions and payloads over 1024 bytes; resume scanning one
+  byte after the candidate sync.
 - Retain partial candidates until more serial bytes arrive.
 - Reject pending shell operations when the link closes.
 - A new DOS process always performs `HELLO` and `SESSION_START`; it never relies
@@ -121,8 +119,8 @@ locally without sending this frame.
 
 ```text
 HELLO seq=1 payload="LIZA-DOS/0.1"
-4c5a010101000c004c495a412d444f532f302e314068
+4c5a010101000c004c495a412d444f532f302e31
 
 ERROR seq=2 payload="hello"
-4c5a01040200050068656c6c6fd1dd
+4c5a01040200050068656c6c6f
 ```

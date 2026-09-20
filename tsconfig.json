@@ -19,7 +19,6 @@
   ],
   "exclude": [
     "host/**/*.test.ts",
-    "host/test-support/**/*.ts",
     "host/test-helpers/**/*.ts"
   ]
 }

@@ -1,24 +1,10 @@
 #include <string.h>
 #include "protocol.h"
 
-unsigned short liza_crc16(const unsigned char *data, unsigned short length)
-{
-    unsigned short crc = 0xffff;
-    unsigned short i;
-    unsigned char bit;
-    for (i = 0; i < length; ++i) {
-        crc ^= (unsigned short)data[i] << 8;
-        for (bit = 0; bit < 8; ++bit)
-            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
-    }
-    return crc;
-}
-
 unsigned short liza_encode(unsigned char *output, unsigned char type,
                            unsigned short sequence, const unsigned char *payload,
                            unsigned short length)
 {
-    unsigned short crc;
     output[0] = 0x4c;
     output[1] = 0x5a;
     output[2] = LIZA_VERSION;
@@ -28,10 +14,7 @@ unsigned short liza_encode(unsigned char *output, unsigned char type,
     output[6] = length & 0xff;
     output[7] = length >> 8;
     memcpy(output + 8, payload, length);
-    crc = liza_crc16(output + 2, length + 6);
-    output[length + 8] = crc & 0xff;
-    output[length + 9] = crc >> 8;
-    return length + 10;
+    return length + 8;
 }
 
 /* After rejecting a candidate frame, resume scanning one byte after its
@@ -62,7 +45,6 @@ static void decoder_resync(liza_decoder *decoder)
 int liza_decode_byte(liza_decoder *decoder, unsigned char byte, liza_frame *frame)
 {
     unsigned short length;
-    unsigned short expected;
 
     if (decoder->state == 0) {
         if (byte == LIZA_SYNC_0) decoder->state = 1;
@@ -89,17 +71,10 @@ int liza_decode_byte(liza_decoder *decoder, unsigned char byte, liza_frame *fram
                 if (decoder->state != 2) return 0;
                 continue;
             }
-            decoder->expected = length + 8;
+            decoder->expected = length + 6;
         }
         if (decoder->used < decoder->expected) return 0;
-        length = decoder->expected - 8;
-        expected = decoder->data[decoder->expected - 2] |
-                   ((unsigned short)decoder->data[decoder->expected - 1] << 8);
-        if (expected != liza_crc16(decoder->data, length + 6)) {
-            decoder_resync(decoder);
-            if (decoder->state != 2) return 0;
-            continue;
-        }
+        length = decoder->expected - 6;
         break;
     }
 

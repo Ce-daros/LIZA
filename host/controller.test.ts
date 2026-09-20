@@ -4,7 +4,6 @@ import { LizaController } from "./controller.js";
 import type { AgentDriver, AgentStatus, DosSessionPort, SavedSession } from "./agent-driver.js";
 import { DosPeer } from "./dos-peer.js";
 import { Frame, FrameDecoder, MessageType } from "./protocol.js";
-import { encodeExitCode } from "./dos-simulator.js";
 
 class FakeAgent implements AgentDriver {
   port: DosSessionPort | undefined;
@@ -99,7 +98,7 @@ test("flushes streamed text before displaying a shell tool call", async () => {
       peer.receive({
         type: MessageType.ExecResultEnd,
         sequence: frame.sequence,
-        payload: Buffer.concat([encodeExitCode(0), Buffer.from([1]), Buffer.from("C:\\")]),
+        payload: Buffer.concat([Buffer.alloc(2), Buffer.from([1]), Buffer.from("C:\\")]),
       });
     }
   });

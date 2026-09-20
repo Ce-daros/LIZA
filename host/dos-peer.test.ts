@@ -3,7 +3,6 @@ import test from "node:test";
 import { DosPeer } from "./dos-peer.js";
 import { ClientMode, Frame, FrameDecoder, MessageType } from "./protocol.js";
 import { maxOutputChars } from "./protocol.generated.js";
-import { encodeExitCode } from "./test-support/dos-simulator.js";
 
 function decodeWire(wire: Buffer): Frame {
   const frames = new FrameDecoder().push(wire);
@@ -53,7 +52,7 @@ test("streams a DOS command result back to one pending execution", async () => {
     peer.receive({
       type: MessageType.ExecResultEnd,
       sequence: request.sequence,
-      payload: Buffer.concat([encodeExitCode(0), Buffer.from([1]), Buffer.from("C:\\DOS")]),
+      payload: Buffer.concat([Buffer.alloc(2), Buffer.from([1]), Buffer.from("C:\\DOS")]),
     });
   });
 
@@ -213,7 +212,7 @@ test("propagates the DOS completeness flag as part of the resolved shell result"
     peer.receive({
       type: MessageType.ExecResultEnd,
       sequence: request.sequence,
-      payload: Buffer.concat([encodeExitCode(0), Buffer.from([0]), Buffer.from("C:\\")]),
+      payload: Buffer.concat([Buffer.alloc(2), Buffer.from([0]), Buffer.from("C:\\")]),
     });
   });
   assert.equal((await peer.execute("DIR")).complete, false);
@@ -226,7 +225,7 @@ test("treats a 2-byte legacy EXEC_RESULT_END as complete", async () => {
     peer.receive({
       type: MessageType.ExecResultEnd,
       sequence: request.sequence,
-      payload: Buffer.concat([encodeExitCode(0), Buffer.from("C:\\")]),
+      payload: Buffer.concat([Buffer.alloc(2), Buffer.from("C:\\")]),
     });
   });
   assert.deepEqual(await peer.execute("DIR"), { output: "", exitCode: 0, cwd: "C:\\", complete: true });
@@ -305,7 +304,7 @@ test("caps DOS command output while continuing to complete the operation", async
     peer.receive({
       type: MessageType.ExecResultEnd,
       sequence: request.sequence,
-      payload: Buffer.concat([encodeExitCode(0), Buffer.from([1]), Buffer.from("C:\\DOS")]),
+      payload: Buffer.concat([Buffer.alloc(2), Buffer.from([1]), Buffer.from("C:\\DOS")]),
     });
   });
   const result = await peer.execute("DIR");

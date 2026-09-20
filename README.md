@@ -14,7 +14,6 @@ guest. Python runs in a sandboxed process on the Windows host.
 
 - Windows 11 and 86Box 5.4
 - Node.js 22.19 or newer
-- Open Watcom 16-bit DOS compiler at `C:\WATCOM16` (to build the DOS client)
 - Python 3 on `PATH` for `run_python` (NumPy, SciPy, pandas, Matplotlib, SymPy)
 - MS-DOS 6.22 guest with an emulated COM1 connection and `HIMEM.SYS` loaded
 - `MIMO_API_KEY` in the host environment
@@ -65,15 +64,6 @@ reasoning-content replay are enabled for LIZA's tools. The model also supports
 JSON structured output when a future tool needs it.
 
 ## DOS client
-
-Build the 16-bit real-mode executable and transfer image:
-
-```powershell
-npm run build:dos
-```
-
-Mount `dos\LIZA-DOS.img` as a 1.44 MB floppy and copy `LIZA.EXE` to the DOS hard
-disk. The image chain-loads the first hard disk when left inserted.
 
 ```dos
 C:\>LIZA what's your name?

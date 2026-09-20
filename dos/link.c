@@ -6,7 +6,7 @@
 #include "serial.h"
 #include "terminal.h"
 
-static unsigned char wire[LIZA_MAX_PAYLOAD + 10];
+static unsigned char wire[LIZA_MAX_PAYLOAD + LIZA_HEADER_SIZE];
 static liza_decoder decoder;
 liza_frame link_frame;
 static unsigned short next_sequence = 1;

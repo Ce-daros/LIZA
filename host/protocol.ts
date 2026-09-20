@@ -34,29 +34,17 @@ export function decodeExitCode(payload: Uint8Array): number {
   return Buffer.from(payload).readInt16LE();
 }
 
-export function crc16(data: Uint8Array): number {
-  let crc = 0xffff;
-  for (const byte of data) {
-    crc ^= byte << 8;
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = (crc & 0x8000) !== 0 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
-    }
-  }
-  return crc;
-}
-
 export function encodeFrame(frame: Frame): Buffer {
   if (frame.payload.length > MAX_PAYLOAD) {
     throw new RangeError(`payload exceeds ${MAX_PAYLOAD} bytes`);
   }
-  const result = Buffer.alloc(HEADER_SIZE + frame.payload.length + 2);
+  const result = Buffer.alloc(HEADER_SIZE + frame.payload.length);
   SYNC.copy(result, 0);
   result[2] = VERSION;
   result[3] = frame.type;
   result.writeUInt16LE(frame.sequence, 4);
   result.writeUInt16LE(frame.payload.length, 6);
   frame.payload.copy(result, HEADER_SIZE);
-  result.writeUInt16LE(crc16(result.subarray(2, HEADER_SIZE + frame.payload.length)), HEADER_SIZE + frame.payload.length);
   return result;
 }
 
@@ -82,19 +70,13 @@ export class FrameDecoder {
         continue;
       }
 
-      const frameLength = HEADER_SIZE + payloadLength + 2;
+      const frameLength = HEADER_SIZE + payloadLength;
       if (this.buffer.length < frameLength) break;
-      const expected = this.buffer.readUInt16LE(frameLength - 2);
-      const actual = crc16(this.buffer.subarray(2, frameLength - 2));
-      if (expected !== actual) {
-        this.buffer = this.buffer.subarray(1);
-        continue;
-      }
 
       frames.push({
         type: this.buffer[3] as MessageType,
         sequence: this.buffer.readUInt16LE(4),
-        payload: Buffer.from(this.buffer.subarray(HEADER_SIZE, frameLength - 2)),
+        payload: Buffer.from(this.buffer.subarray(HEADER_SIZE, frameLength)),
       });
       this.buffer = this.buffer.subarray(frameLength);
     }

@@ -2,7 +2,7 @@
 
 ## Complete
 
-- [x] Framed serial protocol with CRC, partial-read handling, resynchronization,
+- [x] Framed serial protocol with partial-read handling, resynchronization,
   chunked streams, cancellation, errors, disconnect, and session control
 - [x] Windows named-pipe server for 86Box 5.4 and optional physical serial port
 - [x] Persistent Pi conversations with listing, resume, rename, deletion, text export, and explicit new-session command
@@ -26,8 +26,7 @@
 - [x] Per-invocation current directory, drive, and environment persistence
 - [x] Temporary capture-file cleanup on success and transport failure
 - [x] Clean carrier-loss behavior and host-side rejection of interrupted commands
-- [x] Protocol and simulated DOS endpoint tests
-- [x] Reproducible Open Watcom real-mode build and FAT12 transfer image
+- [x] Protocol tests
 - [x] Bootable-floppy safety chain-loader and documented 86Box configuration
 
 ## Verified
@@ -35,8 +34,6 @@
 - TypeScript strict build
 - Automated host/protocol tests
 - Pi model registry and persistent session initialization without a model request
-- Open Watcom 16-bit DOS compilation
-- 1.44 MB FAT12 image size and `55 AA` boot signature
 - Bidirectional 86Box named-pipe serial handshake
 
 ## Manual integration checks

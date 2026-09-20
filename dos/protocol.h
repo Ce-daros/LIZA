@@ -17,7 +17,6 @@ typedef struct {
     unsigned char state;
 } liza_decoder;
 
-unsigned short liza_crc16(const unsigned char *data, unsigned short length);
 unsigned short liza_encode(unsigned char *output, unsigned char type,
                            unsigned short sequence, const unsigned char *payload,
                            unsigned short length);
