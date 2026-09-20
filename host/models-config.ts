@@ -18,7 +18,6 @@ export interface LizaModel {
   alias: string;
   provider: string;
   id: string;
-  displayName: string;
 }
 
 export interface LizaModels {
@@ -40,7 +39,6 @@ export function loadLizaModels(configPath: string): LizaModels {
         alias: model.alias,
         provider: providerName,
         id: model.id,
-        displayName: model.name,
       };
       models.push(entry);
       if (model.default) {
